@@ -52,6 +52,8 @@ vec3 curvature(vec3 nextPos, vec3 currPos, float ds);
 vec3 normal(vec3 cA, vec3 gravity);
 vec3 binormal(vec3 normal, vec3 tangent);
 mat4 freFrame(vec3 N, vec3 B, vec3 T);
+vec3 binormalAtCurrPoint(vec3 nextPos, vec3 currPos, vec3 prevPos);
+void createTrack (vector<vec3> points);
 float getLength(vec3 v);
 int wrap(int i);
 
@@ -83,12 +85,18 @@ struct VertexBuffers{
 
 GLuint vao;
 GLuint vaoLine; //vertex array object for the line.
+GLuint vaoPos;
+GLuint vaoNeg;
+
 VertexBuffers vbo;
 VertexBuffers vboLine;//vertex buffer object for the line
+VertexBuffers vboNeg;
+VertexBuffers vboPos;
 
 //Geometry information
 vector<vec3> points, normals, linePoints, lineNormal, XYZPoints, XYZNormals;
-vector<unsigned int> indices, lineIndices, XYZIndices;
+vector<vec3> negRail, posRail, posNorm, negNorm; 
+vector<unsigned int> indices, lineIndices, XYZIndices, negIndices, posIndices;
 vec3 gravity = vec3(0.0f, 9.81f, 0.0f);
 
 Camera* activeCamera;
@@ -172,7 +180,10 @@ void resizeCallback(GLFWwindow* window, int width, int height)
 	winRatio[1][1] = minDim/float(height);
 }
 
-
+void printVec(vec3 vector)
+{
+	cout << "X: " << vector.x << " Y: " << vector.y << " Z: " << vector.z << endl;
+}
 
 
 
@@ -295,6 +306,7 @@ bool loadUniforms(GLuint program, mat4 perspective, mat4 modelview)
 						false,
 						&perspective[0][0]);
 
+	glUseProgram(0);
 	return !CheckGLErrors("loadUniforms");
 }
 
@@ -338,6 +350,28 @@ void renderLine()
 	
 	
 	CheckGLErrors("renderLine");
+	glUseProgram(0);
+	glBindVertexArray(0);
+}
+void renderLineTest(GLuint vao, VertexBuffers vbo, vector<vec3> points, vector<vec3> normal, vector<unsigned int> indices)
+{
+	glBindVertexArray(vao);
+	glUseProgram(program);
+	
+	
+	loadBuffer(vbo, points, normal, indices);
+	
+
+	glDrawElements(
+			GL_LINE_LOOP,
+			indices.size(),
+			GL_UNSIGNED_INT,
+			(void*)0
+			);
+	
+	
+	
+	CheckGLErrors("renderLineTest");
 	glUseProgram(0);
 	glBindVertexArray(0);
 }
@@ -844,7 +878,14 @@ int main(int argc, char *argv[])
 	initVAO(vao, vbo);
 	initVAO(vaoLine, vboLine);
 
-	
+	glGenVertexArrays(1, &vaoPos);
+	glGenBuffers(VertexBuffers::COUNT, vboPos.id);
+
+	glGenVertexArrays(1, &vaoNeg);
+	glGenBuffers(VertexBuffers::COUNT, vboNeg.id);
+
+	initVAO(vaoPos, vboPos);
+	initVAO(vaoNeg, vboNeg);
 
 	//generateSquare(&points, &normals, &indices, 0.5f);
 	generateCube(&points, &normals, &indices, 0.5f);
@@ -854,10 +895,12 @@ int main(int argc, char *argv[])
 	generateLine(&linePoints, &lineNormal, &lineIndices);
 	
 	generateSquareXYZCoords(&XYZPoints, &XYZNormals, &XYZIndices);
-	for(int i = 0; i < 15; i++)
+	for(int i = 0; i < 10; i++)
 	{
 		linePoints = subdivision(linePoints, &lineIndices, &lineNormal);
 	}
+	
+	createTrack(linePoints); //creates the positive and negative rails
 	
 	H = highestPoint(linePoints);
 	low = lowestPoint(linePoints);
@@ -945,9 +988,21 @@ int main(int argc, char *argv[])
         
 		
 		//Draw the line
+		//loadUniforms(program, winRatio*perspectiveMatrix*V, mat4(1.0f));
+		
+       //renderLine();
+		
+		
 		loadUniforms(program, winRatio*perspectiveMatrix*V, mat4(1.0f));
 		
-        renderLine();
+		renderLineTest(vaoNeg, vboNeg, negRail, negNorm, negIndices); //need to make there own normals and indices probably
+		
+		
+		
+		loadUniforms(program, winRatio*perspectiveMatrix*V, mat4(1.0f));
+		
+		renderLineTest(vaoPos, vboPos, posRail, posNorm, posIndices);
+		
 		
 		loadUniforms(program, winRatio*perspectiveMatrix*V, MXYZ);
 		renderXYZ(); //XYZ Framework of the Cube;
@@ -1050,7 +1105,18 @@ vec3 binormal(vec3 normal, vec3 tangent)
 	return B;
 	
 }
-
+vec3 binormalAtCurrPoint(vec3 nextPos, vec3 currPos, vec3 prevPos)
+{
+	
+	vec3 centAcc = centAccel(nextPos, currPos, prevPos);
+	vec3 T = tangentTemp(nextPos, prevPos);
+	vec3 N = normal(centAcc, gravity);
+	
+	vec3 B = binormal(N,T);
+	B = B / getLength(B);
+	
+	return B;
+}
 /* for now move the square along the x axis*/
 void animate(vec3 cartLoc, int &i, vector<vec3> points, float ds)
 {
@@ -1060,13 +1126,14 @@ void animate(vec3 cartLoc, int &i, vector<vec3> points, float ds)
 	vec3 nextPosOnCurve = points[wrap(i+1)];
 	
 	
-	vec3 centAcc = centAccel(nextPosOnCurve, cartLoc, prevPos);
+	vec3 centAcc = centAccel(nextPos, cartLoc, prevPos);
 	vec3 N = normal(centAcc, gravity);
 	
-	vec3 tempT = tangentTemp(nextPosOnCurve, prevPos);
+	vec3 tempT = tangentTemp(nextPos, prevPos);
 
 
 	vec3 B = binormal(N, tempT);
+	
 	
 	vec3 T = tangent(B, N);
 	
@@ -1181,12 +1248,15 @@ vector<vec3> subdivision(vector<vec3> points, vector<unsigned int>* indices, vec
 		averagedPoints.push_back(midPoint);
 		
 			
-		indices->push_back(j);
+		
 		
 	
 	}
+	
 	for(int i = 0;  i < averagedPoints.size(); i++)
 	{
+		indices->push_back(i);
+		
 		nextEl = i + 1;
 		if(nextEl != averagedPoints.size())
 			indices->push_back(i+1);
@@ -1198,7 +1268,42 @@ vector<vec3> subdivision(vector<vec3> points, vector<unsigned int>* indices, vec
 	
 	return averagedPoints;
 }
-
+/* find the binormal at each point and add it to the current track for one rail and subtract it from the current track for the other rail*/
+void createTrack (vector<vec3> points)
+{
+	int nextEl;
+	for(int i = 0; i < points.size(); i++)
+	{
+		vec3 binormal = binormalAtCurrPoint(points[wrap(i+1)], points[wrap(i)], points[wrap(i-1)]);
+		
+		/* TEST*/
+		
+		printVec(binormal);
+		
+		negRail.push_back((points[i] - binormal));
+		posRail.push_back((points[i] + binormal));
+		
+		negIndices.push_back(i);
+		posIndices.push_back(i);
+		
+		posNorm.push_back(vec3(1.0f, 1.0f, 1.0f));
+		negNorm.push_back(vec3(1.0f, 1.0f, 1.0f));
+		
+		nextEl = i + 1;
+		if(nextEl != points.size())
+		{
+			negIndices.push_back(i+1);
+			posIndices.push_back(i+1);
+		}
+		else
+		{
+			negIndices.push_back(0);
+			posIndices.push_back(0);
+		}
+		
+	}
+	
+}
 // --------------------------------------------------------------------------
 // OpenGL utility functions
 

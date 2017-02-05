@@ -51,7 +51,7 @@ vec3 tangentTemp(vec3 nextPos, vec3 currPos);
 vec3 curvature(vec3 nextPos, vec3 currPos, float ds);
 vec3 normal(vec3 cA, vec3 gravity);
 vec3 binormal(vec3 normal, vec3 tangent);
-mat4 freFrame(vec3 N, vec3 B, vec3 T, mat4 M);
+mat4 freFrame(vec3 N, vec3 B, vec3 T);
 float getLength(vec3 v);
 int wrap(int i);
 
@@ -854,7 +854,7 @@ int main(int argc, char *argv[])
 	generateLine(&linePoints, &lineNormal, &lineIndices);
 	
 	generateSquareXYZCoords(&XYZPoints, &XYZNormals, &XYZIndices);
-	for(int i = 0; i < 10; i++)
+	for(int i = 0; i < 15; i++)
 	{
 		linePoints = subdivision(linePoints, &lineIndices, &lineNormal);
 	}
@@ -973,7 +973,7 @@ int main(int argc, char *argv[])
 
 int wrap(int i)
 {
-	int s;
+	int s = i;
 	if(s >= 0)
 		s = i%linePoints.size();
 	else
@@ -1016,7 +1016,7 @@ vec3 curvature(vec3 nextPos, vec3 currPos, float ds)
 
 vec3 normal(vec3 cA, vec3 gravity)
 {
-	vec3 N = cA - gravity;
+	vec3 N = cA + gravity;
 	N = N / getLength(N);
 	return N;
 }
@@ -1024,40 +1024,20 @@ vec3 normal(vec3 cA, vec3 gravity)
 vec3 N (vec3 nextPos, vec3 currPos, vec3 prevPos)
 {
 	vec3 n = (nextPos - (2.0f * currPos) + prevPos);
-	return  n / getLength(n);
+	return  n;
 }
-/**/
-vec3 centAccel (vec3 nextPos, vec3 currPos, vec3 prevPos, vec3 n)
+/*centripetal acceleration calculation (a perpedicular)*/
+vec3 centAccel (vec3 nextPos, vec3 currPos, vec3 prevPos)
 {
-	vec3 nVec = (nextPos - (2.0f * currPos) + prevPos);
-	//nVec = nVec/getLength(nVec);
+	vec3 nVec = N(nextPos, currPos, prevPos);
 	float x = 0.5f * getLength(nVec);
-	float c = 0.5f * getLength(nextPos - prevPos);
-	
-	//float k = (2.0f * x) / ((x*x) + (c*c)); 
-	
-	float k = 1.0f / ((x*x) +(c*c));
-	float r = 1.0f/k;
-	r = (v*v) / r;
-	
+	float c = 0.5f * getLength((nextPos - prevPos));
 
-	return k * n;
+	float k = 1.0f / ((x*x)+(c*c));
+
+	return k * nVec;
 }
-/*
-float r (vec3 nextPos, vec3 currPos, vec3 prevPos, vec3 n)
-{
-	vec3 nVec = (nextPos - (2.0f * currPos) + prevPos);
-	//nVec = nVec/getLength(nVec);
-	float x = 0.5f * getLength(nVec);
-	float c = 0.5f * getLength(nextPos - prevPos);
-	
-	//float k = (2.0f * x) / ((x*x) + (c*c)); 
-	
-	float k = 1.0f / ((x*x) +(c*c));
-	
-	return 1.0f / k;
-}
-* */
+
 float getLength(vec3 v)
 {
 	return sqrt((v.x * v.x) + (v.y * v.y) + (v.z * v.z));
@@ -1070,6 +1050,7 @@ vec3 binormal(vec3 normal, vec3 tangent)
 	return B;
 	
 }
+
 /* for now move the square along the x axis*/
 void animate(vec3 cartLoc, int &i, vector<vec3> points, float ds)
 {
@@ -1079,8 +1060,7 @@ void animate(vec3 cartLoc, int &i, vector<vec3> points, float ds)
 	vec3 nextPosOnCurve = points[wrap(i+1)];
 	
 	
-	vec3 nCent = N(nextPosOnCurve, cartLoc, prevPos);			//n for calculating centripetal force direction
-	vec3 centAcc = centAccel(nextPosOnCurve, cartLoc, prevPos, nCent);
+	vec3 centAcc = centAccel(nextPosOnCurve, cartLoc, prevPos);
 	vec3 N = normal(centAcc, gravity);
 	
 	vec3 tempT = tangentTemp(nextPosOnCurve, prevPos);
@@ -1093,7 +1073,7 @@ void animate(vec3 cartLoc, int &i, vector<vec3> points, float ds)
 	
 	mat4 modelTrans = translate(mat4(1.0f), nextPos);
 	
-	mat4 frenetFrame = freFrame(N, B, T, modelTrans);
+	mat4 frenetFrame = freFrame(N, B, T);
 	
 	
 	M =  modelTrans * frenetFrame;
@@ -1110,7 +1090,7 @@ void animate(vec3 cartLoc, int &i, vector<vec3> points, float ds)
 							B.z,N.z,T.z,0.0
 							0.0,0.0,0.0,1.0);
 */
-mat4 freFrame(vec3 N, vec3 B, vec3 T, mat4 M)
+mat4 freFrame(vec3 N, vec3 B, vec3 T)
 {
 	mat4 frenetFrame;
 	

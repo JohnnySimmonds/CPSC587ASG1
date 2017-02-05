@@ -67,7 +67,7 @@ float H;
 float dt = 0.04;
 float h;
 float v;
-float ds = 0.009;
+float ds = 0.001;
 float prevT = glfwGetTime();
 float distLow;
 
@@ -617,59 +617,23 @@ void generateSquareXYZCoords(vector<vec3>* vertices, vector<vec3>* normals,
 void generateLine(vector<vec3>* vertices, vector<vec3>* normals, 
 					vector<unsigned int>* indices)
 {
-	/*Generate Random Track*/
-	/*
-	vertices->push_back(vec3(-12, 0, 0)); //vert 1
-	vertices->push_back(vec3(12, 0, 0)); //vert 3
-	vertices->push_back(vec3(30, -30, 0)); //vert 2
-	vertices->push_back(vec3(70, 30, 0)); //vert 3
-	*/
 	
-	/* Generate a circle*/
+	/* Main Loop */
 	/*
-	vertices->push_back(vec3(-12, 0, 10)); //vert 1
-	vertices->push_back(vec3(12, 0, 10)); //vert 3
-	vertices->push_back(vec3(12, -12, -10)); //vert 2
-	vertices->push_back(vec3(-12, -12, -10)); //vert 3
+	vertices->push_back(vec3(0, 0, 0)); //vert 0
+	vertices->push_back(vec3(0, 30, -40)); //vert 1
+	vertices->push_back(vec3(-10, 50, -40)); //vert 2
+	vertices->push_back(vec3(-30, 0, -40)); //vert 3
+	vertices->push_back(vec3(-30, 0, 10)); //vert 4
+	vertices->push_back(vec3(0, 0, 10)); //vert 5
 	*/
-	/* Infinity sign*/
-	/*
-	vertices->push_back(vec3(-12, 0, 10)); //vert 1
-	vertices->push_back(vec3(12, -12, -10)); //vert 2
-	vertices->push_back(vec3(12, 0, 10)); //vert 3
-	vertices->push_back(vec3(-12, -12, -10)); //vert 3
-	*/
-	/* messing with Z coords on the Infinity Sign*/
-	
-	/*
-	vertices->push_back(vec3(-12, 0, 10)); //vert 1
-	vertices->push_back(vec3(12, -12, 10)); //vert 2
-	vertices->push_back(vec3(12, 30, -10)); //vert 3
-	vertices->push_back(vec3(-12, -12, -10)); //vert 3
-	*/
-	
 	
 	vertices->push_back(vec3(0, 0, 0)); //vert 0
-	vertices->push_back(vec3(0, 20, -40)); //vert 1
-	vertices->push_back(vec3(-10, 20, -40)); //vert 2
-	vertices->push_back(vec3(-20, 0, -40)); //vert 3
-	vertices->push_back(vec3(-20, 0, 10)); //vert 4
-	vertices->push_back(vec3(0, 0, 10)); //vert 4
-	/*
-	vertices->push_back(vec3(10, 10, 0)); //vert 1
-	vertices->push_back(vec3(10, -10, 0)); //vert 2
-	vertices->push_back(vec3(0, 0, 0)); //vert 3
-	vertices->push_back(vec3(-10, 10, 0)); //vert 3
-	*/
-	/*
-	vertices->push_back(vec3(-10, 0, -10)); //vert 0
-	vertices->push_back(vec3(0, 0, -10)); //vert 1
-	vertices->push_back(vec3(40, 30, -20)); //vert 2
-	vertices->push_back(vec3(90, 30, -20)); //vert 3
-	vertices->push_back(vec3(0, 0, 0)); //vert 4
-	vertices->push_back(vec3(-10, -5, 5)); //vert 5
-	*/
-	
+	vertices->push_back(vec3(0, 30, -40)); //vert 1
+	vertices->push_back(vec3(-20, 30, -40)); //vert 2
+	vertices->push_back(vec3(-30, 0, -40)); //vert 3
+	vertices->push_back(vec3(-30, 0, 10)); //vert 4
+	vertices->push_back(vec3(0, 0, 10)); //vert 5
 	
 	
 	normals->push_back(vec3(0.f, 1.f, 0.f));
@@ -912,7 +876,7 @@ int main(int argc, char *argv[])
 
 	float currDist = 0;
 	
-	Camera cam = Camera(vec3(0, 0, -1), vec3(0, 0, 50));
+	Camera cam = Camera(vec3(0, 0, -1), vec3(0, 20, 50));
 	activeCamera = &cam;
 	//float fovy, float aspect, float zNear, float zFar
 	mat4 perspectiveMatrix = perspective(radians(80.f), 1.f, 0.1f, 100.f);
@@ -993,7 +957,7 @@ int main(int argc, char *argv[])
         // draw the square for now
         if(!firstPerson)
         {
-			//cam.pos = vec3(0, 0, 50);
+			//cam.pos = vec3(0, 20, 50);
 			//V = cam.getMatrix();
 			loadUniforms(program, winRatio*perspectiveMatrix*V, M);
 			render();

@@ -48,7 +48,6 @@ void generateSquareXYZCoords(vector<vec3>* vertices, vector<vec3>* normals,
 vec3 archLength(vec3 Bt, int& i, vector<vec3> points, float Ds);
 vec3 posOnCurve(vec3 Bt, int &i, vector<vec3> points, float ds);
 vec3 tangentTemp(vec3 nextPos, vec3 currPos);
-vec3 curvature(vec3 nextPos, vec3 currPos, float ds);
 vec3 normal(vec3 cA, vec3 gravity);
 vec3 binormal(vec3 normal, vec3 tangent);
 mat4 freFrame(vec3 N, vec3 B, vec3 T);
@@ -75,6 +74,7 @@ float distLow;
 bool lifting = true;
 bool gravityFree = false;
 bool decel = false;
+bool firstPerson = false;
 
 
 struct VertexBuffers{
@@ -128,11 +128,11 @@ void keyCallback(GLFWwindow* window, int key, int scancode, int action, int mods
         glfwSetWindowShouldClose(window, GL_TRUE);
     if(key == GLFW_KEY_SPACE && action == GLFW_PRESS)
     {
-	
-		if(play == false)
-			play = true;
-		else
-			play = false;
+		play = !play;
+	}
+	if(key == GLFW_KEY_F && action == GLFW_PRESS)
+	{
+		firstPerson = !firstPerson;
 	}
 }
 
@@ -971,8 +971,17 @@ int main(int argc, char *argv[])
 			} 
 		}
 		
+		
+		if(firstPerson)
+		{
+			//cam.pos = linePoints[i];
+			
+		}
 		V = cam.getMatrix();
-
+		
+		
+		
+		
 		
 		if(play)
 			{	
@@ -982,10 +991,16 @@ int main(int argc, char *argv[])
 		
 		
         // draw the square for now
-        loadUniforms(program, winRatio*perspectiveMatrix*V, M);
-        render();
-       
+        if(!firstPerson)
+        {
+			//cam.pos = vec3(0, 0, 50);
+			//V = cam.getMatrix();
+			loadUniforms(program, winRatio*perspectiveMatrix*V, M);
+			render();
+		}
+	
         
+      
 		
 		//Draw the line
 		//loadUniforms(program, winRatio*perspectiveMatrix*V, mat4(1.0f));
@@ -1042,7 +1057,7 @@ int wrap(int i)
  * Returns the point at which the object should be at on the curve based on the passed in Ds
  * */
 
-/*--------------------- Not sure if this is right (Stuff for Frenet Frame-----------------------------------------*/
+
 vec3 posOnCurve(vec3 Bt, int &i, vector<vec3> points, float ds)
 {
 	return archLength(Bt, i, points, ds);
@@ -1063,15 +1078,9 @@ vec3 tangent(vec3 B, vec3 N)
 	
 }
 
-/* probably not needed*/
-vec3 curvature(vec3 nextPos, vec3 currPos, float ds)
-{
-	return ((currPos + nextPos)- (2.0f * nextPos) + (currPos - nextPos)) / (ds*ds);
-}
-
 vec3 normal(vec3 cA, vec3 gravity)
 {
-	vec3 N = cA + gravity;
+	vec3 N = cA - gravity;
 	N = N / getLength(N);
 	return N;
 }
@@ -1141,7 +1150,7 @@ void animate(vec3 cartLoc, int &i, vector<vec3> points, float ds)
 	mat4 modelTrans = translate(mat4(1.0f), nextPos);
 	
 	mat4 frenetFrame = freFrame(N, B, T);
-	
+
 	
 	M =  modelTrans * frenetFrame;
 	MXYZ = modelTrans * frenetFrame;
@@ -1162,16 +1171,17 @@ mat4 freFrame(vec3 N, vec3 B, vec3 T)
 	mat4 frenetFrame;
 	
 	frenetFrame[0][0] = B.x; 
-	frenetFrame[1][0] = B.y; 
-	frenetFrame[2][0] = B.z;
+	frenetFrame[0][1] = B.y; 
+	frenetFrame[0][2] = B.z;
 	
-	frenetFrame[0][1] = N.x; 
+	frenetFrame[1][0] = N.x; 
 	frenetFrame[1][1] = N.y; 
-	frenetFrame[2][1] = N.z;
+	frenetFrame[1][2] = N.z;
 	
-	frenetFrame[0][2] = T.x; 
-	frenetFrame[1][2] = T.y; 
+	frenetFrame[2][0] = T.x; 
+	frenetFrame[2][1] = T.y; 
 	frenetFrame[2][2] = T.z;
+	
 	
 	
 	return frenetFrame;
@@ -1275,10 +1285,6 @@ void createTrack (vector<vec3> points)
 	for(int i = 0; i < points.size(); i++)
 	{
 		vec3 binormal = binormalAtCurrPoint(points[wrap(i+1)], points[wrap(i)], points[wrap(i-1)]);
-		
-		/* TEST*/
-		
-		printVec(binormal);
 		
 		negRail.push_back((points[i] - binormal));
 		posRail.push_back((points[i] + binormal));

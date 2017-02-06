@@ -45,6 +45,11 @@ vector<vec3> subdivision(vector<vec3> points, vector<unsigned int>* indices, vec
 void generateSquareXYZCoords(vector<vec3>* vertices, vector<vec3>* normals, 
 					vector<unsigned int>* indices);
 
+void generateWheel(vector<vec3>* vertices, vector<vec3>* normals, 
+					vector<unsigned int>* indices, float width);
+					
+
+
 vec3 archLength(vec3 Bt, int& i, vector<vec3> points, float Ds);
 vec3 posOnCurve(vec3 Bt, int &i, vector<vec3> points, float ds);
 vec3 tangentTemp(vec3 nextPos, vec3 currPos);
@@ -53,6 +58,7 @@ vec3 binormal(vec3 normal, vec3 tangent);
 mat4 freFrame(vec3 N, vec3 B, vec3 T);
 vec3 binormalAtCurrPoint(vec3 nextPos, vec3 currPos, vec3 prevPos);
 void createTrack (vector<vec3> points);
+void createWheel(vector<vec3> points);
 float getLength(vec3 v);
 int wrap(int i);
 
@@ -76,7 +82,9 @@ bool gravityFree = false;
 bool decel = false;
 bool firstPerson = false;
 
-
+mat4 freeFrame = mat4(1.0f);
+mat4 mWheelR = scale(mat4(1.0f), vec3(0.5f, 0.5f, 0.5f));
+mat4 mWheelL = scale(mat4(1.0f), vec3(0.5f, 0.5f, 0.5f));
 struct VertexBuffers{
 	enum{ VERTICES=0, NORMALS, INDICES, COUNT};
 
@@ -87,16 +95,27 @@ GLuint vao;
 GLuint vaoLine; //vertex array object for the line.
 GLuint vaoPos;
 GLuint vaoNeg;
+GLuint vaoWheel;
+GLuint vaoGround;
 
 VertexBuffers vbo;
 VertexBuffers vboLine;//vertex buffer object for the line
 VertexBuffers vboNeg;
 VertexBuffers vboPos;
+VertexBuffers vboWheel;
+VertexBuffers vboGround;
 
 //Geometry information
-vector<vec3> points, normals, linePoints, lineNormal, XYZPoints, XYZNormals;
+vector<vec3> points, normals, linePoints, lineNormal, XYZPoints, XYZNormals, wheel, wheelNorm, ground, groundNorm;
 vector<vec3> negRail, posRail, posNorm, negNorm; 
-vector<unsigned int> indices, lineIndices, XYZIndices, negIndices, posIndices;
+vector<unsigned int> indices, lineIndices, XYZIndices, negIndices, posIndices, wheelInd, groundInd;
+
+
+VertexBuffers vboPillar;
+GLuint vaoPillar;
+vector<vec3> pillar, pillarNorm;
+vector<unsigned int> pillarInd;
+
 vec3 gravity = vec3(0.0f, 9.81f, 0.0f);
 
 Camera* activeCamera;
@@ -330,6 +349,64 @@ void render()
 	glBindVertexArray(0);
 }
 
+void renderPillar(GLuint vao, VertexBuffers vbo, vector<vec3> points, vector<vec3> normal, vector<unsigned int> indices)
+{
+	glBindVertexArray(vao);		//Use the LINES vertex array
+	glUseProgram(program);
+
+	loadBuffer(vbo, points, normal, indices);
+
+	glDrawElements(
+			GL_TRIANGLES,		//What shape we're drawing	- GL_TRIANGLES, GL_LINES, GL_POINTS, GL_QUADS, GL_TRIANGLE_STRIP
+			indices.size(),		//How many indices
+			GL_UNSIGNED_INT,	//Type
+			(void*)0			//Offset
+			);
+
+	CheckGLErrors("render");
+	glUseProgram(0);
+	glBindVertexArray(0);
+}
+
+void renderGround(GLuint vao, VertexBuffers vbo, vector<vec3> points, vector<vec3> normal, vector<unsigned int> indices)
+{
+	glBindVertexArray(vao);		//Use the LINES vertex array
+	glUseProgram(program);
+
+	loadBuffer(vbo, points, normal, indices);
+
+	glDrawElements(
+			GL_TRIANGLES,		//What shape we're drawing	- GL_TRIANGLES, GL_LINES, GL_POINTS, GL_QUADS, GL_TRIANGLE_STRIP
+			indices.size(),		//How many indices
+			GL_UNSIGNED_INT,	//Type
+			(void*)0			//Offset
+			);
+
+	CheckGLErrors("render");
+	glUseProgram(0);
+	glBindVertexArray(0);
+}
+
+void renderWheel(GLuint vao, VertexBuffers vbo, vector<vec3> points, vector<vec3> normal, vector<unsigned int> indices)
+{
+	glBindVertexArray(vao);		//Use the LINES vertex array
+	glUseProgram(program);
+
+	loadBuffer(vbo, points, normals, indices);
+
+	glDrawElements(
+			GL_TRIANGLES,		//What shape we're drawing	- GL_TRIANGLES, GL_LINES, GL_POINTS, GL_QUADS, GL_TRIANGLE_STRIP
+			indices.size(),		//How many indices
+			GL_UNSIGNED_INT,	//Type
+			(void*)0			//Offset
+			);
+
+	CheckGLErrors("render");
+	glUseProgram(0);
+	glBindVertexArray(0);
+}
+
+
 void renderLine()
 {
 	
@@ -399,18 +476,57 @@ void renderXYZ()
 	glBindVertexArray(0);
 	
 }
-void generateSquare(vector<vec3>* vertices, vector<vec3>* normals, 
+void generateWheel(vector<vec3>* vertices, vector<vec3>* normals, 
 					vector<unsigned int>* indices, float width)
 {
-	vertices->push_back(vec3(-width*0.5f, -width*0.75f, 0.f));
-	vertices->push_back(vec3(width*0.5f, -width*0.75f, 0.f));
-	vertices->push_back(vec3(width*0.5f, width*0.75f, 0.f));
-	vertices->push_back(vec3(-width*0.5f, width*0.75f, 0.f));
+	vertices->push_back(vec3(1.0f, 1.0f, 0.f));
+	vertices->push_back(vec3(1.0f, 1.0f, -1.0f));
+	vertices->push_back(vec3(1.0f, 0.0f, -1.0f));
+	vertices->push_back(vec3(1.0f, 0.0f, 0.0f));
 
 	normals->push_back(vec3(1.f, 1.f, 1.f));
 	normals->push_back(vec3(1.f, 1.f, 1.f));
 	normals->push_back(vec3(1.f, 1.f, 1.f));
 	normals->push_back(vec3(1.f, 1.f, 1.f));
+	
+	indices->push_back(0);
+	indices->push_back(1);
+	
+	indices->push_back(1);
+	indices->push_back(2);
+	
+	indices->push_back(2);
+	indices->push_back(3);
+	
+	indices->push_back(3);
+	indices->push_back(0);
+						
+}
+void generateSquare(vector<vec3>* vertices, vector<vec3>* normals, 
+					vector<unsigned int>* indices, float width)
+{
+	/*
+	vertices->push_back(vec3(-width*0.5f, -width*0.75f, 0.f));
+	vertices->push_back(vec3(width*0.5f, -width*0.75f, 0.f));
+	vertices->push_back(vec3(width*0.5f, width*0.75f, 0.f));
+	vertices->push_back(vec3(-width*0.5f, width*0.75f, 0.f));
+*/
+/*
+	vertices->push_back(vec3(-1.0f, -1.0f, 0.f));
+	vertices->push_back(vec3(1.0f, -1.0f, 0.f));
+	vertices->push_back(vec3(1.0f, 1.0f, 0.f));
+	vertices->push_back(vec3(-1.0f, 1.0f, 0.f));
+*/
+
+	vertices->push_back(vec3(-2.0f, -1.0f, -2.0f));
+	vertices->push_back(vec3(2.0f, -1.0f, -2.0f));
+	vertices->push_back(vec3(2.0f, -1.0f, 2.0f));
+	vertices->push_back(vec3(-2.0f, -1.0f, 2.0f));
+
+	normals->push_back(vec3(0.0f, 0.3f, 0.0f));
+	normals->push_back(vec3(0.0f, 0.2f, 0.0f));
+	normals->push_back(vec3(0.0f, 0.4f, 0.0f));
+	normals->push_back(vec3(0.0f, 0.6f, 0.0f));
 
 	//First triangle
 	indices->push_back(0);
@@ -421,7 +537,99 @@ void generateSquare(vector<vec3>* vertices, vector<vec3>* normals,
 	indices->push_back(3);
 	indices->push_back(0);
 }
-
+void generatePillar(vector<vec3>* vertices, vector<vec3>* normals,
+			vector<unsigned int>* indices, vec3 highPoint, vec3 lowPoint)
+{
+	float xH = highPoint.x;
+	float yH = highPoint.y;
+	float zH = highPoint.z;
+	
+	
+	float xL = xH;
+	float yL = yH-yH-3.0f;
+	float zL = zH;
+	float inc = 0.75f;
+	lowPoint = vec3(xL,yL,zL);
+	vertices->push_back(highPoint); //0
+	vertices->push_back(vec3(xH + inc, yH, zH)); //1
+	vertices->push_back(vec3(xH + inc, yH, zH + inc)); //2
+	vertices->push_back(vec3(xH, yH, zH + inc)); //3
+	
+	vertices->push_back(lowPoint); //0
+	vertices->push_back(vec3(xL + inc, yL, zL)); //1
+	vertices->push_back(vec3(xL + inc, yL, zL + inc)); //2
+	vertices->push_back(vec3(xL, yL, zL + inc)); //3
+	
+	normals->push_back(vec3(0.5f, 0.5f, 0.0f));
+	normals->push_back(vec3(0.5f, 0.5f, 0.0f));
+	normals->push_back(vec3(0.5f, 0.5f, 0.0f));
+	normals->push_back(vec3(0.5f, 0.5f, 0.0f));
+	
+	normals->push_back(vec3(0.5f, 0.5f, 0.0f));
+	normals->push_back(vec3(0.5f, 0.5f, 0.0f));
+	normals->push_back(vec3(0.5f, 0.5f, 0.0f));
+	normals->push_back(vec3(0.5f, 0.5f, 0.0f));
+	
+	/*TOP*/
+	indices->push_back(0);
+	indices->push_back(2);
+	indices->push_back(3);
+	
+	indices->push_back(0);
+	indices->push_back(1);
+	indices->push_back(2);
+	
+	/*left*/
+	indices->push_back(0);
+	indices->push_back(3);
+	indices->push_back(4);
+	
+	indices->push_back(3);
+	indices->push_back(4);
+	indices->push_back(5);
+	
+	/*Right*/
+	indices->push_back(1);
+	indices->push_back(2);
+	indices->push_back(7);
+	
+	indices->push_back(2);
+	indices->push_back(6);
+	indices->push_back(7);
+	
+	/*Back*/
+	indices->push_back(0);
+	indices->push_back(1);
+	indices->push_back(4);
+	
+	indices->push_back(1);
+	indices->push_back(4);
+	indices->push_back(7);
+	
+	/*Front*/
+	indices->push_back(2);
+	indices->push_back(3);
+	indices->push_back(5);
+	
+	indices->push_back(2);
+	indices->push_back(5);
+	indices->push_back(6);
+	
+	/*Bottom*/
+	indices->push_back(4);
+	indices->push_back(5);
+	indices->push_back(6);
+	
+	indices->push_back(5);
+	indices->push_back(6);
+	indices->push_back(7);
+	
+	
+	
+	
+	
+	
+}
 void generateCube(vector<vec3>* vertices, vector<vec3>* normals, 
 					vector<unsigned int>* indices, float width)
 {
@@ -573,15 +781,15 @@ indices->push_back(8);
 
 /*colors of each point*/
 
-normals->push_back(vec3(0.f, 0.f, 1.f));
-normals->push_back(vec3(0.f, 0.f, 1.f));
-normals->push_back(vec3(0.f, 0.f, 1.f));
-normals->push_back(vec3(0.f, 0.f, 1.f));
+normals->push_back(vec3(0.9f, 0.0f, 0.f));
+normals->push_back(vec3(0.7f, 0.0f, 0.f));
+normals->push_back(vec3(0.5f, 0.0f, 0.f));
+normals->push_back(vec3(0.3f, 0.0f, 0.f));
 
-normals->push_back(vec3(0.f, 1.f, 1.f));
-normals->push_back(vec3(0.f, 1.f, 0.f));
-normals->push_back(vec3(0.f, 1.f, 0.f));
-normals->push_back(vec3(0.f, 1.f, 0.f));
+normals->push_back(vec3(0.9f, 0.0f, 0.f));
+normals->push_back(vec3(0.7f, 0.0f, 0.f));
+normals->push_back(vec3(0.5f, 0.0f, 0.f));
+normals->push_back(vec3(0.3f, 0.0f, 0.f));
 
 //normals->push_back(vec3(1.f, 1.f, 1.f));
 
@@ -691,6 +899,8 @@ GLFWwindow* createGLFWWindow()
     return window;
 }
 
+
+
 void deleteStuff()
 {
 	// clean up allocated resources before exit
@@ -698,6 +908,19 @@ void deleteStuff()
 	glDeleteBuffers(VertexBuffers::COUNT, vbo.id);
 	glDeleteVertexArrays(1,&vaoLine);
 	glDeleteBuffers(VertexBuffers::COUNT, vboLine.id);
+	
+	glDeleteVertexArrays(1,&vaoGround);
+	glDeleteBuffers(VertexBuffers::COUNT, vboGround.id);
+	
+	glDeleteVertexArrays(1,&vaoPos);
+	glDeleteBuffers(VertexBuffers::COUNT, vboPos.id);
+	
+	glDeleteVertexArrays(1,&vaoNeg);
+	glDeleteBuffers(VertexBuffers::COUNT, vboNeg.id);
+	
+	glDeleteVertexArrays(1,&vaoWheel);
+	glDeleteBuffers(VertexBuffers::COUNT, vboWheel.id);
+	
 	glDeleteProgram(program);
 }
 
@@ -848,11 +1071,28 @@ int main(int argc, char *argv[])
 	glGenVertexArrays(1, &vaoNeg);
 	glGenBuffers(VertexBuffers::COUNT, vboNeg.id);
 
+	glGenVertexArrays(1, &vaoWheel);
+	glGenBuffers(VertexBuffers::COUNT, vboWheel.id);
+
+	glGenVertexArrays(1, &vaoGround);
+	glGenBuffers(VertexBuffers::COUNT, vboGround.id);
+
+
 	initVAO(vaoPos, vboPos);
 	initVAO(vaoNeg, vboNeg);
+	initVAO(vaoWheel, vboWheel);
+	initVAO(vaoGround, vboGround);
 
-	//generateSquare(&points, &normals, &indices, 0.5f);
+	
+	glGenVertexArrays(1, &vaoPillar);
+	glGenBuffers(VertexBuffers::COUNT, vboPillar.id);
+
+	initVAO(vaoPillar, vboPillar);
+	
+	
+	generateWheel(&wheel, &wheelNorm, &wheelInd, 0.5f);
 	generateCube(&points, &normals, &indices, 0.5f);
+	generateSquare(&ground, &groundNorm, &groundInd, 0.5f);
 	
 	
 	/* setup buffers to draw line*/
@@ -861,13 +1101,18 @@ int main(int argc, char *argv[])
 	generateSquareXYZCoords(&XYZPoints, &XYZNormals, &XYZIndices);
 	for(int i = 0; i < 10; i++)
 	{
+		wheel = subdivision(wheel, &wheelInd, &wheelNorm);
 		linePoints = subdivision(linePoints, &lineIndices, &lineNormal);
+		
 	}
 	
 	createTrack(linePoints); //creates the positive and negative rails
+//	createWheel(linePoints);
 	
 	H = highestPoint(linePoints);
 	low = lowestPoint(linePoints);
+	generatePillar(&pillar, &pillarNorm, &pillarInd, linePoints[highestPointIndex], linePoints[lowestPointIndex]);
+	
 	int startPoint = zeroHeight(linePoints, low);
 	int startDec = decelPoint(linePoints, low);
 	float decDist = distanceDecToStart(linePoints, startPoint, startDec);
@@ -876,10 +1121,10 @@ int main(int argc, char *argv[])
 
 	float currDist = 0;
 	
-	Camera cam = Camera(vec3(0, 0, -1), vec3(0, 20, 50));
+	Camera cam = Camera(vec3(0, 0, -1), vec3(10, 20, 50));
 	activeCamera = &cam;
 	//float fovy, float aspect, float zNear, float zFar
-	mat4 perspectiveMatrix = perspective(radians(80.f), 1.f, 0.1f, 100.f);
+	mat4 perspectiveMatrix = perspective(radians(80.f), 1.f, 0.1f, 300.f);
 	
 	
 	int i;
@@ -934,14 +1179,14 @@ int main(int argc, char *argv[])
 				lifting = true;
 			} 
 		}
-		
+			V = cam.getMatrix();
 		
 		if(firstPerson)
 		{
 			//cam.pos = linePoints[i];
-			
+			//V = freeFrame;
 		}
-		V = cam.getMatrix();
+	
 		
 		
 		
@@ -962,10 +1207,20 @@ int main(int argc, char *argv[])
 			loadUniforms(program, winRatio*perspectiveMatrix*V, M);
 			render();
 		}
-	
-        
-      
 		
+        loadUniforms(program, winRatio*perspectiveMatrix*V, mWheelR);
+		renderLineTest(vaoWheel, vboWheel, wheel, wheelNorm, wheelInd);
+      
+		loadUniforms(program, winRatio*perspectiveMatrix*V, mWheelL);
+		renderLineTest(vaoWheel, vboWheel, wheel, wheelNorm, wheelInd);
+		
+		loadUniforms(program, winRatio*perspectiveMatrix*V, scale(mat4(1.0f), vec3(25.0f, 3.0f, 30.0f)));
+		renderGround(vaoGround, vboGround, ground, groundNorm, groundInd);
+	
+		loadUniforms(program, winRatio*perspectiveMatrix*V, mat4(1.0f));
+		renderPillar(vaoPillar, vboPillar, pillar, pillarNorm, pillarInd);
+	
+	
 		//Draw the line
 		//loadUniforms(program, winRatio*perspectiveMatrix*V, mat4(1.0f));
 		
@@ -983,8 +1238,8 @@ int main(int argc, char *argv[])
 		renderLineTest(vaoPos, vboPos, posRail, posNorm, posIndices);
 		
 		
-		loadUniforms(program, winRatio*perspectiveMatrix*V, MXYZ);
-		renderXYZ(); //XYZ Framework of the Cube;
+		//loadUniforms(program, winRatio*perspectiveMatrix*V, MXYZ);
+		//renderXYZ(); //XYZ Framework of the Cube;
 		
         // scene is rendered to the back buffer, so swap to front for display
         glfwSwapInterval(1);
@@ -1088,7 +1343,7 @@ vec3 binormalAtCurrPoint(vec3 nextPos, vec3 currPos, vec3 prevPos)
 	vec3 B = binormal(N,T);
 	B = B / getLength(B);
 	
-	return B;
+	return B*1.5f;
 }
 /* for now move the square along the x axis*/
 void animate(vec3 cartLoc, int &i, vector<vec3> points, float ds)
@@ -1114,11 +1369,26 @@ void animate(vec3 cartLoc, int &i, vector<vec3> points, float ds)
 	mat4 modelTrans = translate(mat4(1.0f), nextPos);
 	
 	mat4 frenetFrame = freFrame(N, B, T);
-
 	
-	M =  modelTrans * frenetFrame;
-	MXYZ = modelTrans * frenetFrame;
+	vec3 Btemp = B;
 
+	Btemp *= 0.5f;
+	vec3 wheelTemp = nextPos + Btemp;
+	
+	Btemp = B;
+	Btemp *= 2.5f;
+	mat4 wheelRTrans = translate(mat4(1.0f), wheelTemp);
+
+	wheelTemp = nextPos - Btemp;
+	mat4 wheelLTrans = translate(mat4(1.0f), wheelTemp);
+	
+	M = translate(mat4(1.0f), vec3(0.0f,1.0f,0.0f))* modelTrans * frenetFrame * scale(mat4(1.0f), vec3(1.3f, 1.3f,1.3f));
+	MXYZ = modelTrans * frenetFrame;
+	freeFrame = frenetFrame;
+	
+	
+	mWheelL = wheelLTrans * frenetFrame;
+	mWheelR = wheelRTrans * frenetFrame;
 	
 
 }
@@ -1256,8 +1526,8 @@ void createTrack (vector<vec3> points)
 		negIndices.push_back(i);
 		posIndices.push_back(i);
 		
-		posNorm.push_back(vec3(1.0f, 1.0f, 1.0f));
-		negNorm.push_back(vec3(1.0f, 1.0f, 1.0f));
+		posNorm.push_back(vec3(0.5f, 0.5f, 0.0f));
+		negNorm.push_back(vec3(0.5f, 0.5f, 0.0f));
 		
 		nextEl = i + 1;
 		if(nextEl != points.size())
@@ -1269,6 +1539,41 @@ void createTrack (vector<vec3> points)
 		{
 			negIndices.push_back(0);
 			posIndices.push_back(0);
+		}
+		
+	}
+	
+}
+/*might not need*/
+void createWheel(vector<vec3> points)
+{
+	int nextEl;
+	for(int i = 0; i < points.size(); i++)
+	{
+		vec3 binormal = binormalAtCurrPoint(points[wrap(i+1)], points[wrap(i)], points[wrap(i-1)]);
+		
+		wheel.push_back((points[i] - binormal));
+		
+		
+		wheelInd.push_back(i);
+		//posIndices.push_back(i);
+		
+		wheelNorm.push_back(vec3(1.0f, 1.0f, 1.0f));
+		//posNorm.push_back(vec3(1.0f, 1.0f, 1.0f));
+		//negNorm.push_back(vec3(1.0f, 1.0f, 1.0f));
+		
+		nextEl = i + 1;
+		if(nextEl != points.size())
+		{
+			wheelInd.push_back(i+1);
+			//negIndices.push_back(i+1);
+			//posIndices.push_back(i+1);
+		}
+		else
+		{
+			wheelInd.push_back(0);
+		//	negIndices.push_back(0);
+			//posIndices.push_back(0);
 		}
 		
 	}

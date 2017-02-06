@@ -9,7 +9,7 @@
 // Author:  Sonny Chan, University of Calgary
 // Date:    December 2015
 // ==========================================================================
-
+#include <fstream>
 #include <iostream>
 #include <fstream>
 #include <string>
@@ -111,11 +111,13 @@ vector<vec3> negRail, posRail, posNorm, negNorm;
 vector<unsigned int> indices, lineIndices, XYZIndices, negIndices, posIndices, wheelInd, groundInd;
 
 
-VertexBuffers vboPillar;
-GLuint vaoPillar;
-vector<vec3> pillar, pillarNorm;
-vector<unsigned int> pillarInd;
+VertexBuffers vboPillar, vboPillarO;
+GLuint vaoPillar, vaoPillarO;
+vector<vec3> pillar, pillarNorm, pillarO, pillarONorm;
+vector<unsigned int> pillarInd, pillarOInd;
 
+
+vector<vec3> filePoints;
 vec3 gravity = vec3(0.0f, 9.81f, 0.0f);
 
 Camera* activeCamera;
@@ -836,13 +838,20 @@ void generateLine(vector<vec3>* vertices, vector<vec3>* normals,
 	vertices->push_back(vec3(0, 0, 10)); //vert 5
 	*/
 	
+	for(int i = 0; i < filePoints.size()-1; i++)
+	{
+		vertices->push_back(filePoints[i]);
+	}
+	
+	/*
 	vertices->push_back(vec3(0, 0, 0)); //vert 0
 	vertices->push_back(vec3(0, 30, -40)); //vert 1
 	vertices->push_back(vec3(-20, 30, -40)); //vert 2
 	vertices->push_back(vec3(-30, 0, -40)); //vert 3
 	vertices->push_back(vec3(-30, 0, 10)); //vert 4
 	vertices->push_back(vec3(0, 0, 10)); //vert 5
-	
+	*/
+
 	
 	normals->push_back(vec3(0.f, 1.f, 0.f));
 	normals->push_back(vec3(1.f, 0.f, 0.f));
@@ -906,6 +915,7 @@ void deleteStuff()
 	// clean up allocated resources before exit
 	glDeleteVertexArrays(1, &vao);
 	glDeleteBuffers(VertexBuffers::COUNT, vbo.id);
+	
 	glDeleteVertexArrays(1,&vaoLine);
 	glDeleteBuffers(VertexBuffers::COUNT, vboLine.id);
 	
@@ -920,6 +930,12 @@ void deleteStuff()
 	
 	glDeleteVertexArrays(1,&vaoWheel);
 	glDeleteBuffers(VertexBuffers::COUNT, vboWheel.id);
+	
+	glDeleteVertexArrays(1,&vaoPillar);
+	glDeleteBuffers(VertexBuffers::COUNT, vboPillar.id);
+	
+	glDeleteVertexArrays(1,&vaoPillarO);
+	glDeleteBuffers(VertexBuffers::COUNT, vboPillarO.id);
 	
 	glDeleteProgram(program);
 }
@@ -1029,7 +1045,31 @@ float velocity(float h)
 	
 	return v;
 }
+void readFile()
+{
+	ifstream myFile;
+	
+	float x,y,z;
+	vec3 input;
+	
 
+	myFile.open("trackCoords.txt");
+	if(myFile.is_open())
+	{
+		while(!myFile.eof())
+		{
+			myFile >> x >> y >> z;
+			filePoints.push_back(vec3(x,y,z));
+		}	
+	}
+	else
+	{
+		cout << "File not opened" << endl;
+	}
+	
+	myFile.close();
+	
+}
 
 int main(int argc, char *argv[])
 {   
@@ -1052,6 +1092,8 @@ int main(int argc, char *argv[])
 	//Initialize shader
 	program = initShader("vertex.glsl", "fragment.glsl");
 
+	
+	readFile();
 	
 	//GLuint vboLine; 
 
@@ -1087,6 +1129,10 @@ int main(int argc, char *argv[])
 	glGenVertexArrays(1, &vaoPillar);
 	glGenBuffers(VertexBuffers::COUNT, vboPillar.id);
 
+	glGenVertexArrays(1, &vaoPillarO);
+	glGenBuffers(VertexBuffers::COUNT, vboPillarO.id);
+	
+	initVAO(vaoPillarO, vboPillarO);
 	initVAO(vaoPillar, vboPillar);
 	
 	
@@ -1112,6 +1158,8 @@ int main(int argc, char *argv[])
 	H = highestPoint(linePoints);
 	low = lowestPoint(linePoints);
 	generatePillar(&pillar, &pillarNorm, &pillarInd, linePoints[highestPointIndex], linePoints[lowestPointIndex]);
+	generatePillar(&pillarO, &pillarONorm, &pillarOInd, linePoints[0], linePoints[lowestPointIndex]);
+	
 	
 	int startPoint = zeroHeight(linePoints, low);
 	int startDec = decelPoint(linePoints, low);
@@ -1141,7 +1189,7 @@ int main(int argc, char *argv[])
     // run an event-triggered main loop
     while (!glfwWindowShouldClose(window))
     {
-		glClearColor(0.4, 0.4, 0.4, 1.0);
+		glClearColor(0.2, 0.2, 0.7, 1.0);
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);		//Clear color and depth buffers (Haven't covered yet)
 		h = linePoints[i].y;
 	
@@ -1181,12 +1229,7 @@ int main(int argc, char *argv[])
 		}
 			V = cam.getMatrix();
 		
-		if(firstPerson)
-		{
-			//cam.pos = linePoints[i];
-			//V = freeFrame;
-		}
-	
+		
 		
 		
 		
@@ -1197,6 +1240,17 @@ int main(int argc, char *argv[])
 				ds = v*dt;
 				animate(linePoints[i], i, linePoints, ds);		
 			}
+		if(firstPerson)
+		{
+		//	frenetFrame[2][0] = T.x; 
+		//frenetFrame[2][1] = T.y; 
+		//frenetFrame[2][2]
+		//	cam.dir = vec3(freeFrame[2][0], freeFrame[2][1], freeFrame[2][2]);
+			 
+			//cam.pos = linePoints[i];
+			//V = freeFrame;
+		}
+	
 		
 		
         // draw the square for now
@@ -1220,6 +1274,8 @@ int main(int argc, char *argv[])
 		loadUniforms(program, winRatio*perspectiveMatrix*V, mat4(1.0f));
 		renderPillar(vaoPillar, vboPillar, pillar, pillarNorm, pillarInd);
 	
+		loadUniforms(program, winRatio*perspectiveMatrix*V, mat4(1.0f));
+		renderPillar(vaoPillarO, vboPillarO, pillarO, pillarONorm, pillarOInd);
 	
 		//Draw the line
 		//loadUniforms(program, winRatio*perspectiveMatrix*V, mat4(1.0f));

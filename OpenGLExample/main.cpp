@@ -118,7 +118,7 @@ vector<unsigned int> pillarInd, pillarOInd;
 
 
 vector<vec3> filePoints;
-vec3 gravity = vec3(0.0f, 9.81f, 0.0f);
+vec3 gravity = vec3(0.0f, -9.81f, 0.0f);
 
 Camera* activeCamera;
 
@@ -1041,7 +1041,7 @@ float distanceDecToStart(vector<vec3> points, int startIndex, int decIndex)
 }
 float velocity(float h)
 {
-	float v = sqrt(2.0f * gravity.y * (H-h));
+	float v = sqrt(2.0f * -1.0f *gravity.y * (H-h));
 	
 	return v;
 }
@@ -1053,7 +1053,8 @@ void readFile()
 	vec3 input;
 	
 
-	myFile.open("trackCoords.txt");
+	//myFile.open("trackCoords.txt");
+	myFile.open("track2.txt");
 	if(myFile.is_open())
 	{
 		while(!myFile.eof())
@@ -1216,6 +1217,7 @@ int main(int argc, char *argv[])
 			}	
 		
 		}
+		
 		if(decel)
 		{
 			
@@ -1227,6 +1229,7 @@ int main(int argc, char *argv[])
 				lifting = true;
 			} 
 		}
+		
 			V = cam.getMatrix();
 		
 		
@@ -1355,7 +1358,7 @@ vec3 tangent(vec3 B, vec3 N)
 
 vec3 normal(vec3 cA, vec3 gravity)
 {
-	vec3 N = cA - gravity;
+	vec3 N = -(cA + gravity);
 	N = N / getLength(N);
 	return N;
 }
@@ -1363,18 +1366,26 @@ vec3 normal(vec3 cA, vec3 gravity)
 vec3 N (vec3 nextPos, vec3 currPos, vec3 prevPos)
 {
 	vec3 n = (nextPos - (2.0f * currPos) + prevPos);
-	return  n;
+	
+	return n;
 }
-/*centripetal acceleration calculation (a perpedicular)*/
-vec3 centAccel (vec3 nextPos, vec3 currPos, vec3 prevPos)
+float curvature (vec3 nextPos, vec3 currPos, vec3 prevPos)
 {
 	vec3 nVec = N(nextPos, currPos, prevPos);
 	float x = 0.5f * getLength(nVec);
 	float c = 0.5f * getLength((nextPos - prevPos));
 
 	float k = 1.0f / ((x*x)+(c*c));
+	//float k = (2.0f * x) / ((x*x)+(c*c));
 
-	return k * nVec;
+	return k;
+}
+/*centripetal acceleration calculation (a perpedicular)*/
+vec3 centAccel (vec3 nextPos, vec3 currPos, vec3 prevPos)
+{
+	vec3 nVec = N(nextPos, currPos, prevPos);
+	nVec = nVec / getLength(nVec);
+	return nVec;
 }
 
 float getLength(vec3 v)
@@ -1393,8 +1404,16 @@ vec3 binormalAtCurrPoint(vec3 nextPos, vec3 currPos, vec3 prevPos)
 {
 	
 	vec3 centAcc = centAccel(nextPos, currPos, prevPos);
+	float k = curvature(nextPos, currPos, prevPos);
+	//centAcc = k * centAcc;
 	vec3 T = tangentTemp(nextPos, prevPos);
-	vec3 N = normal(centAcc, gravity);
+	
+	float r = 1.0f / k;
+	//centAcc = centAcc * r
+	vec3 N = (((v*v)/r) * centAcc) + gravity;
+	
+	N = N / getLength(N);
+	
 	
 	vec3 B = binormal(N,T);
 	B = B / getLength(B);
@@ -1410,10 +1429,14 @@ void animate(vec3 cartLoc, int &i, vector<vec3> points, float ds)
 	vec3 nextPosOnCurve = points[wrap(i+1)];
 	
 	
-	vec3 centAcc = centAccel(nextPos, cartLoc, prevPos);
-	vec3 N = normal(centAcc, gravity);
+	vec3 centAcc = centAccel(nextPosOnCurve, cartLoc, prevPos);
+	float k = curvature(nextPos, cartLoc, prevPos);
+	float r = 1.0f / k;
+
+	vec3 N = (((v*v)/r) * centAcc) + gravity;
 	
-	vec3 tempT = tangentTemp(nextPos, prevPos);
+	N = N / getLength(N);
+	vec3 tempT = tangentTemp(nextPosOnCurve, prevPos);
 
 
 	vec3 B = binormal(N, tempT);
@@ -1423,6 +1446,7 @@ void animate(vec3 cartLoc, int &i, vector<vec3> points, float ds)
 	
 	
 	mat4 modelTrans = translate(mat4(1.0f), nextPos);
+	
 	
 	mat4 frenetFrame = freFrame(N, B, T);
 	
@@ -1481,20 +1505,20 @@ vec3 archLength(vec3 Bt, int &io, vector<vec3> points, float Ds)
 {
 	int i = io;
 	vec3 objPos = points[wrap(i+1)] - Bt;
-	float objLen = getLength(objPos);
+	float lenToNextPoint = getLength(objPos);
 	float DsP;
 	vec3 currLine;
 	
 	/* moves to the next point on the curve  even if Ds = 0 or the distance to move is less than the distance to the next point*/
-	if(objLen > Ds)
+	if(lenToNextPoint > Ds)
 		{
 			i++;
 			io = wrap(i);
-			return (Bt + (Ds *(objPos/objLen)));
+			return (Bt + (Ds *(objPos/lenToNextPoint)));
 		}
 	else
 		{
-			DsP = objLen;
+			DsP = lenToNextPoint;
 			i++;
 			io = wrap(i);
 		}
@@ -1568,16 +1592,51 @@ vector<vec3> subdivision(vector<vec3> points, vector<unsigned int>* indices, vec
 	
 	return averagedPoints;
 }
+
+vec3 trackAnimation(vec3 cartLoc, int &i, vector<vec3> points, float ds)
+{
+	//vec3 nextPos= posOnCurve(cartLoc, i, points, ds);
+	vec3 prevPos = points[wrap(i-1)];
+	vec3 nextPosOnCurve = points[wrap(i+1)];
+	
+	
+	vec3 centAcc = centAccel(nextPosOnCurve, cartLoc, prevPos);
+	float k = curvature(nextPosOnCurve, cartLoc, prevPos);
+
+	
+	vec3 N = (((v*v)/(1.0f/k)) * centAcc) + gravity;
+	
+	N = N / getLength(N);
+	vec3 tempT = tangentTemp(nextPosOnCurve, prevPos);
+
+
+	vec3 B = binormal(N, tempT);
+	
+	
+	//vec3 T = tangent(B, N);
+	
+	return B;
+}
 /* find the binormal at each point and add it to the current track for one rail and subtract it from the current track for the other rail*/
 void createTrack (vector<vec3> points)
 {
+	
+	
 	int nextEl;
+	vec3 binormal;
+	vec3 cartLoc;
+	float ds;
 	for(int i = 0; i < points.size(); i++)
 	{
+		//v = velocity(points[i].y);
+		//ds = v*dt;
+		//cartLoc = points[i];
+		//binormal = trackAnimation(cartLoc, i, points, ds);
+		
 		vec3 binormal = binormalAtCurrPoint(points[wrap(i+1)], points[wrap(i)], points[wrap(i-1)]);
 		
-		negRail.push_back((points[i] - binormal));
-		posRail.push_back((points[i] + binormal));
+		negRail.push_back((points[i] + binormal));
+		posRail.push_back((points[i] - binormal));
 		
 		negIndices.push_back(i);
 		posIndices.push_back(i);

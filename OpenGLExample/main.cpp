@@ -39,7 +39,7 @@ void QueryGLVersion();
 string LoadSource(const string &filename);
 GLuint CompileShader(GLenum shaderType, const string &source);
 GLuint LinkProgram(GLuint vertexShader, GLuint fragmentShader);
-void animate(vec3 cartLoc, int &i, vector<vec3> points, float ds);
+void animate(vec3 cartLoc, int &i, vector<vec3> points, float ds, float v);
 vector<vec3> subdivision(vector<vec3> points, vector<unsigned int>* indices, vector<vec3>* normals);
 
 void generateSquareXYZCoords(vector<vec3>* vertices, vector<vec3>* normals, 
@@ -1079,7 +1079,7 @@ void readFile()
 	myFile.close();
 	
 }
-float currStateV (int i)
+float currStateV (int i, float h)
 {
 		if(gravityFree)
 		{
@@ -1230,9 +1230,9 @@ int main(int argc, char *argv[])
 
 	i = startPoint;
 	createTrack(linePoints); //creates the positive and negative rails
-		
+	v= 0.1f;
 	M = translate(mat4(1.0f), linePoints[i]);
-	animate(linePoints[i], i, linePoints, ds);
+	animate(linePoints[i], i, linePoints, ds, v);
 
 	
 	MXYZ = translate(mat4(1.0f), linePoints[i]);
@@ -1244,14 +1244,14 @@ int main(int argc, char *argv[])
 		glClearColor(0.2, 0.2, 0.7, 1.0);
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);		//Clear color and depth buffers (Haven't covered yet)
 		h = linePoints[i].y;
-		v = currStateV(i);
+		v = currStateV(i, h);
 	
 		V = cam.getMatrix();
 		
 		if(play)
 			{	
 				ds = v*dt;
-				animate(linePoints[i], i, linePoints, ds);		
+				animate(linePoints[i], i, linePoints, ds, v);		
 			}
 		if(firstPerson)
 		{
@@ -1369,7 +1369,7 @@ vec3 tangent(vec3 B, vec3 N)
 
 vec3 normal(vec3 cA, vec3 gravity)
 {
-	vec3 N = (cA - gravity);
+	vec3 N = cA - gravity;
 	N = N / getLength(N);
 	return N;
 }
@@ -1392,7 +1392,7 @@ float curvature (vec3 nextPos, vec3 currPos, vec3 prevPos)
 
 	return k;
 }
-/*centripetal acceleration calculation (a perpedicular)*/
+/*direction of the centripetal force*/
 vec3 centAccel (vec3 nextPos, vec3 currPos, vec3 prevPos)
 {
 	vec3 nVec = (nextPos - (2.0f * currPos) + prevPos);
@@ -1414,31 +1414,32 @@ vec3 binormal(vec3 normal, vec3 tangent)
 }
 vec3 binormalAtCurrPoint(vec3 nextPos, vec3 currPos, vec3 prevPos, float v)
 {
-	
+
 	vec3 centAcc = centAccel(nextPos, currPos, prevPos);
 	float k = curvature(nextPos, currPos, prevPos);
 	vec3 T = tangentTemp(nextPos, prevPos);
 	
 	float r = 1.0f / k;
-
-	vec3 N = (((v*v)/r) * centAcc) + gravity;
 	
-	N = N / getLength(N);
+	vec3 N = normal(centAcc, gravity);
+	//vec3 N = (((v*v)/r) * centAcc) + gravity;
+	
+	//N = N / getLength(N);
 	
 	
 	vec3 B = binormal(N,T);
-	B = B / getLength(B);
+	//B = B / getLength(B);
 	
-	return B*1.5f;
+	return B;
 }
 /* for now move the square along the x axis*/
-void animate(vec3 cartLoc, int &i, vector<vec3> points, float ds)
+void animate(vec3 cartLoc, int &i, vector<vec3> points, float ds, float v)
 {
-
-	vec3 nextPos= posOnCurve(cartLoc, i, points, ds);
+	
+	
+	vec3 nextPos = posOnCurve(cartLoc, i, points, ds);
 	vec3 prevPos = points[wrap(i-1)];
 	vec3 nextPosOnCurve = points[wrap(i+1)];
-	
 	
 	vec3 centAcc = centAccel(nextPosOnCurve, cartLoc, prevPos);
 	float k = curvature(nextPosOnCurve, cartLoc, prevPos);
@@ -1456,8 +1457,8 @@ void animate(vec3 cartLoc, int &i, vector<vec3> points, float ds)
 	
 	vec3 T = tangent(B, N);
 	
-	
-	/*
+	//cout << v << endl;
+/*
 	cout << "R:" << r << endl;
 	cout << "Binormal Animate";
 	printVec(B);
@@ -1471,16 +1472,18 @@ void animate(vec3 cartLoc, int &i, vector<vec3> points, float ds)
 	vec3 Btemp = B;
 
 	Btemp *= 0.5f;
-	vec3 wheelTemp = nextPos + Btemp;
+	vec3 wheelTemp = cartLoc + Btemp;
+	
+	
+	
+	mat4 wheelRTrans = translate(mat4(1.0f), wheelTemp);
 	
 	Btemp = B;
 	Btemp *= 2.5f;
-	mat4 wheelRTrans = translate(mat4(1.0f), wheelTemp);
-
-	wheelTemp = nextPos - Btemp;
+	wheelTemp = cartLoc - Btemp;
 	mat4 wheelLTrans = translate(mat4(1.0f), wheelTemp);
 	
-	M = translate(mat4(1.0f), vec3(0.0f,1.0f,0.0f)) * modelTrans * frenetFrame;// * scale(mat4(1.0f), vec3(1.3f, 1.3f,1.3f));
+	M = translate(mat4(1.0f), vec3(0.0f,1.0f,0.0f)) * modelTrans * frenetFrame * scale(mat4(1.0f), vec3(0.5f, 0.5f, 0.5f));
 	MXYZ = modelTrans * frenetFrame;
 	freeFrame = frenetFrame;
 	
@@ -1519,9 +1522,9 @@ mat4 freFrame(vec3 N, vec3 B, vec3 T)
 	return frenetFrame;
 }
 /*-----------------------------------------------------------------------------------------------------------------*/
-vec3 archLength(vec3 Bt, int &io, vector<vec3> points, float Ds)
+vec3 archLength(vec3 Bt, int &i, vector<vec3> points, float Ds)
 {
-	int i = io;
+	
 	vec3 objPos = points[wrap(i+1)] - Bt;
 	float lenToNextPoint = getLength(objPos);
 	float DsP;
@@ -1531,14 +1534,15 @@ vec3 archLength(vec3 Bt, int &io, vector<vec3> points, float Ds)
 	if(lenToNextPoint > Ds)
 		{
 			i++;
-			io = wrap(i);
+			i = wrap(i);
 			return (Bt + (Ds *(objPos/lenToNextPoint)));
 		}
 	else
 		{
 			DsP = lenToNextPoint;
 			i++;
-			io = wrap(i);
+			i = wrap(i);
+			
 		}
 			currLine = points[wrap(i+1)] - points[wrap(i)];
 			/* based on the total distance(Ds) to travel it calculates the next point that the object should be at*/
@@ -1548,11 +1552,12 @@ vec3 archLength(vec3 Bt, int &io, vector<vec3> points, float Ds)
 				
 				currLine = points[wrap(i+1)] - points[wrap(i)];
 				i++;
-				io = wrap(i);// wrap(i);
+				i = wrap(i);
+				
 			}
 			
 		
-		return (Ds - DsP)*(currLine / getLength(currLine)) + points[wrap(io)];
+		return ((Ds - DsP)*(currLine / getLength(currLine))) + points[wrap(i)];
 		
 
 }
@@ -1611,26 +1616,90 @@ vector<vec3> subdivision(vector<vec3> points, vector<unsigned int>* indices, vec
 	
 	return averagedPoints;
 }
-
-vec3 trackAnimation(vec3 cartLoc, int i, vector<vec3> points, float v)
+/*
+ * void animate(vec3 cartLoc, int &i, vector<vec3> points, float ds)
 {
 	
-	vec3 nextPos = posOnCurve(cartLoc, i, points, v);
-
+	
+	vec3 nextPos = posOnCurve(cartLoc, i, points, ds);
 	vec3 prevPos = points[wrap(i-1)];
 	vec3 nextPosOnCurve = points[wrap(i+1)];
-//	vec3 nextPos = nextPosOnCurve;
 	
 	vec3 centAcc = centAccel(nextPosOnCurve, cartLoc, prevPos);
 	float k = curvature(nextPosOnCurve, cartLoc, prevPos);
-	float r = 1.0f/k;
+	float r = 1.0f / k;
 
-	
+	//vec3 N = normal(centAcc, gravity);
 	vec3 N = (((v*v)/r) * centAcc) + gravity;
 	N = N / getLength(N);
 	
-	//vec3 N = normal(centAcc, gravity);
+	vec3 tempT = tangentTemp(nextPosOnCurve, prevPos);
+
+
+	vec3 B = binormal(N, tempT);
 	
+	
+	vec3 T = tangent(B, N);
+	
+	
+	/*
+	cout << "R:" << r << endl;
+	cout << "Binormal Animate";
+	printVec(B);
+	cout << "At index i: " << i << endl;
+	
+	mat4 modelTrans = translate(mat4(1.0f), nextPos);
+	
+	
+	mat4 frenetFrame = freFrame(N, B, T);
+	
+	vec3 Btemp = B;
+
+	Btemp *= 0.5f;
+	vec3 wheelTemp = nextPos + Btemp;
+	
+	Btemp = B;
+	Btemp *= 2.5f;
+	mat4 wheelRTrans = translate(mat4(1.0f), wheelTemp);
+
+	wheelTemp = nextPos - Btemp;
+	mat4 wheelLTrans = translate(mat4(1.0f), wheelTemp);
+	
+	M = translate(mat4(1.0f), vec3(0.0f,1.0f,0.0f)) * modelTrans * frenetFrame;// * scale(mat4(1.0f), vec3(1.3f, 1.3f,1.3f));
+	MXYZ = modelTrans * frenetFrame;
+	freeFrame = frenetFrame;
+	
+	
+	mWheelL = wheelLTrans * frenetFrame;
+	mWheelR = wheelRTrans * frenetFrame;
+	
+
+}
+ * 
+ * */
+vec3 trackAnimation(vec3 cartLoc, int i, vector<vec3> points, float ds, float v)
+{
+	//int io = i;
+	
+	vec3 nextPos = posOnCurve(cartLoc, i, points, ds);
+	vec3 prevPos = points[wrap(i-1)];
+	vec3 nextPosOnCurve = points[wrap(i+1)];
+	
+
+	
+	vec3 centAcc = centAccel(nextPosOnCurve, cartLoc, prevPos);
+	float k = curvature(nextPosOnCurve, cartLoc, prevPos);
+	float r = 1.0f / k;
+
+	
+
+	//centAcc = -centAcc;
+	
+	vec3 N = (((v*v)/r) * centAcc) + gravity;
+	N = N / getLength(N);
+	//vec3 N = normal(centAcc, gravity);
+	//vec3 N = normal(centAcc, gravity);
+	//N= -N;
 	vec3 tempT = tangentTemp(nextPosOnCurve, prevPos);
 
 
@@ -1646,7 +1715,7 @@ vec3 trackAnimation(vec3 cartLoc, int i, vector<vec3> points, float v)
 	//vec3 T = tangent(B, N);
 	
 
-	return B;
+	return B*1.5f;
 }
 /* find the binormal at each point and add it to the current track for one rail and subtract it from the current track for the other rail*/
 void createTrack (vector<vec3> points)
@@ -1662,13 +1731,13 @@ void createTrack (vector<vec3> points)
 	for(int j = 0; j < points.size(); j++)
 	{
 		//cout << " I: "<< j << endl;
-		v = currStateV(j);
+		v = currStateV(j, points[j].y);
 		//v = velocity(points[i].y);
-	
+	//	cout << v << endl;
 		//ds = v*dt;
 		//cartLoc = points[i];	
-		
-		binormal = trackAnimation(points[j], j, points, v);
+		ds = v*dt;
+		binormal = trackAnimation(points[j], j, points, ds, v);
 		
 		//binormal = binormalAtCurrPoint(points[wrap(j+1)], points[wrap(j)], points[wrap(j-1)], v);
 		

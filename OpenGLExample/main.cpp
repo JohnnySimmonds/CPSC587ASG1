@@ -56,7 +56,7 @@ vec3 tangentTemp(vec3 nextPos, vec3 currPos);
 vec3 normal(vec3 cA, vec3 gravity);
 vec3 binormal(vec3 normal, vec3 tangent);
 mat4 freFrame(vec3 N, vec3 B, vec3 T);
-vec3 binormalAtCurrPoint(vec3 nextPos, vec3 currPos, vec3 prevPos);
+vec3 binormalAtCurrPoint(vec3 nextPos, vec3 currPos, vec3 prevPos, float v);
 void createTrack (vector<vec3> points);
 void createWheel(vector<vec3> points);
 float getLength(vec3 v);
@@ -76,11 +76,18 @@ float v;
 float ds = 0.001;
 float prevT = glfwGetTime();
 float distLow;
+float low;
 
 bool lifting = true;
 bool gravityFree = false;
 bool decel = false;
 bool firstPerson = false;
+
+int startPoint;
+int startDec ;
+float decDist;
+float vdec;
+float currDist = 0;
 
 mat4 freeFrame = mat4(1.0f);
 mat4 mWheelR = scale(mat4(1.0f), vec3(0.5f, 0.5f, 0.5f));
@@ -124,7 +131,7 @@ Camera* activeCamera;
 
 GLFWwindow* window = 0;
 
-float low;
+
 mat4 winRatio = mat4(1.f);
 mat4 M =  mat4(1.f);
 mat4 V;
@@ -520,10 +527,10 @@ void generateSquare(vector<vec3>* vertices, vector<vec3>* normals,
 	vertices->push_back(vec3(-1.0f, 1.0f, 0.f));
 */
 
-	vertices->push_back(vec3(-2.0f, -1.0f, -2.0f));
-	vertices->push_back(vec3(2.0f, -1.0f, -2.0f));
-	vertices->push_back(vec3(2.0f, -1.0f, 2.0f));
-	vertices->push_back(vec3(-2.0f, -1.0f, 2.0f));
+	vertices->push_back(vec3(-3.0f, -1.0f, -3.0f));
+	vertices->push_back(vec3(3.0f, -1.0f, -3.0f));
+	vertices->push_back(vec3(3.0f, -1.0f, 3.0f));
+	vertices->push_back(vec3(-3.0f, -1.0f, 3.0f));
 
 	normals->push_back(vec3(0.0f, 0.3f, 0.0f));
 	normals->push_back(vec3(0.0f, 0.2f, 0.0f));
@@ -1021,7 +1028,7 @@ int zeroHeight(vector<vec3> points, float low)
 	for(int i = 0; i < points.size(); i++)
 	{
 		h = points[i].y;
-		nextH = points[wrap(i+1)].y;
+		nextH = points[wrap(i+1)].y;//wrap(i+1, points).y;
 		if(h < nextH && h == low)
 			return i;
 		
@@ -1034,14 +1041,14 @@ float distanceDecToStart(vector<vec3> points, int startIndex, int decIndex)
 	float totalDistance = 0;
 	for(int i = decIndex; i <= startIndex; i++)
 	{
-		totalDistance += getLength(points[wrap(i + 1)] - points[i]);
+		totalDistance += getLength(points[wrap(i+1)] - points[wrap(i)]);
 	}
 	
 	return totalDistance;
 }
 float velocity(float h)
 {
-	float v = sqrt(2.0f * -1.0f *gravity.y * (H-h));
+	float v = sqrt(2.0f * -1.0f * gravity.y * (H-h));
 	
 	return v;
 }
@@ -1061,6 +1068,7 @@ void readFile()
 		{
 			myFile >> x >> y >> z;
 			filePoints.push_back(vec3(x,y,z));
+			
 		}	
 	}
 	else
@@ -1070,6 +1078,46 @@ void readFile()
 	
 	myFile.close();
 	
+}
+float currStateV (int i)
+{
+		if(gravityFree)
+		{
+			
+			v = velocity(h);
+			if (i >= startDec)
+			{
+				vdec = v;
+				decel = true;
+				gravityFree = false;
+			}
+			
+			
+		}
+		if(lifting)
+		{
+			v = 2.9;
+			if(i < startPoint && i > highestPointIndex)
+			{
+				lifting = false;
+				gravityFree = true;
+			}	
+		
+		}
+		
+		if(decel)
+		{
+			
+			currDist = distanceDecToStart(linePoints, startPoint, i);
+			v = vdec*(currDist/decDist);
+			if(i >= startPoint)
+			{
+				decel = false;
+				lifting = true;
+			} 
+		}
+		
+	return v;
 }
 
 int main(int argc, char *argv[])
@@ -1145,98 +1193,60 @@ int main(int argc, char *argv[])
 	/* setup buffers to draw line*/
 	generateLine(&linePoints, &lineNormal, &lineIndices);
 	
+	
 	generateSquareXYZCoords(&XYZPoints, &XYZNormals, &XYZIndices);
 	for(int i = 0; i < 10; i++)
 	{
-		wheel = subdivision(wheel, &wheelInd, &wheelNorm);
+		
 		linePoints = subdivision(linePoints, &lineIndices, &lineNormal);
 		
 	}
 	
-	createTrack(linePoints); //creates the positive and negative rails
-//	createWheel(linePoints);
-	
+	for(int i = 0; i < 4; i++)
+	{
+		wheel = subdivision(wheel, &wheelInd, &wheelNorm);
+	}
 	H = highestPoint(linePoints);
 	low = lowestPoint(linePoints);
 	generatePillar(&pillar, &pillarNorm, &pillarInd, linePoints[highestPointIndex], linePoints[lowestPointIndex]);
 	generatePillar(&pillarO, &pillarONorm, &pillarOInd, linePoints[0], linePoints[lowestPointIndex]);
 	
 	
-	int startPoint = zeroHeight(linePoints, low);
-	int startDec = decelPoint(linePoints, low);
-	float decDist = distanceDecToStart(linePoints, startPoint, startDec);
+	startPoint = zeroHeight(linePoints, low);
+	startDec = decelPoint(linePoints, low);
+	decDist = distanceDecToStart(linePoints, startPoint, startDec);
 	
 	//cout << decDist << endl;
 
-	float currDist = 0;
+	
 	
 	Camera cam = Camera(vec3(0, 0, -1), vec3(10, 20, 50));
 	activeCamera = &cam;
 	//float fovy, float aspect, float zNear, float zFar
 	mat4 perspectiveMatrix = perspective(radians(80.f), 1.f, 0.1f, 300.f);
-	
+
 	
 	int i;
 
 	i = startPoint;
-
+	createTrack(linePoints); //creates the positive and negative rails
+		
 	M = translate(mat4(1.0f), linePoints[i]);
 	animate(linePoints[i], i, linePoints, ds);
 
 	
 	MXYZ = translate(mat4(1.0f), linePoints[i]);
 	
-	float vdec;
+	//cout << "BEFORE MAIN LOOP" << endl;
     // run an event-triggered main loop
     while (!glfwWindowShouldClose(window))
     {
 		glClearColor(0.2, 0.2, 0.7, 1.0);
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);		//Clear color and depth buffers (Haven't covered yet)
 		h = linePoints[i].y;
+		v = currStateV(i);
 	
-		if(gravityFree)
-		{
-			
-			v = velocity(h);
-			if (i >= startDec)
-			{
-				vdec = v;
-				decel = true;
-				gravityFree = false;
-			}
-			
-			
-		}
-		if(lifting)
-		{
-			v = 2.9;
-			if(i < startPoint && i > highestPointIndex)
-			{
-				lifting = false;
-				gravityFree = true;
-			}	
-		
-		}
-		
-		if(decel)
-		{
-			
-			currDist = distanceDecToStart(linePoints, startPoint, i);
-			v = vdec*(currDist/decDist);
-			if(i >= startPoint)
-			{
-				decel = false;
-				lifting = true;
-			} 
-		}
-		
-			V = cam.getMatrix();
-		
-		
-		
-		
-		
-		
+		V = cam.getMatrix();
 		
 		if(play)
 			{	
@@ -1248,7 +1258,7 @@ int main(int argc, char *argv[])
 		//	frenetFrame[2][0] = T.x; 
 		//frenetFrame[2][1] = T.y; 
 		//frenetFrame[2][2]
-		//	cam.dir = vec3(freeFrame[2][0], freeFrame[2][1], freeFrame[2][2]);
+			//cam.dir = vec3(freeFrame[2][0], freeFrame[2][1], freeFrame[2][2]);
 			 
 			//cam.pos = linePoints[i];
 			//V = freeFrame;
@@ -1326,6 +1336,7 @@ int wrap(int i)
 		s = i%linePoints.size();
 	else
 		s = linePoints.size()-1;
+	
 	return s;
 }
 // ==========================================================================
@@ -1358,7 +1369,7 @@ vec3 tangent(vec3 B, vec3 N)
 
 vec3 normal(vec3 cA, vec3 gravity)
 {
-	vec3 N = -(cA + gravity);
+	vec3 N = (cA - gravity);
 	N = N / getLength(N);
 	return N;
 }
@@ -1371,7 +1382,8 @@ vec3 N (vec3 nextPos, vec3 currPos, vec3 prevPos)
 }
 float curvature (vec3 nextPos, vec3 currPos, vec3 prevPos)
 {
-	vec3 nVec = N(nextPos, currPos, prevPos);
+	vec3 nVec = (nextPos - (2.0f * currPos) + prevPos);
+	//nVec = nVec / getLength(nVec);
 	float x = 0.5f * getLength(nVec);
 	float c = 0.5f * getLength((nextPos - prevPos));
 
@@ -1383,7 +1395,7 @@ float curvature (vec3 nextPos, vec3 currPos, vec3 prevPos)
 /*centripetal acceleration calculation (a perpedicular)*/
 vec3 centAccel (vec3 nextPos, vec3 currPos, vec3 prevPos)
 {
-	vec3 nVec = N(nextPos, currPos, prevPos);
+	vec3 nVec = (nextPos - (2.0f * currPos) + prevPos);
 	nVec = nVec / getLength(nVec);
 	return nVec;
 }
@@ -1392,24 +1404,23 @@ float getLength(vec3 v)
 {
 	return sqrt((v.x * v.x) + (v.y * v.y) + (v.z * v.z));
 }
+
 vec3 binormal(vec3 normal, vec3 tangent)
 {
 	vec3 B = cross(normal, tangent);
-	
 	B = B / getLength(B);
 	return B;
 	
 }
-vec3 binormalAtCurrPoint(vec3 nextPos, vec3 currPos, vec3 prevPos)
+vec3 binormalAtCurrPoint(vec3 nextPos, vec3 currPos, vec3 prevPos, float v)
 {
 	
 	vec3 centAcc = centAccel(nextPos, currPos, prevPos);
 	float k = curvature(nextPos, currPos, prevPos);
-	//centAcc = k * centAcc;
 	vec3 T = tangentTemp(nextPos, prevPos);
 	
 	float r = 1.0f / k;
-	//centAcc = centAcc * r
+
 	vec3 N = (((v*v)/r) * centAcc) + gravity;
 	
 	N = N / getLength(N);
@@ -1430,12 +1441,13 @@ void animate(vec3 cartLoc, int &i, vector<vec3> points, float ds)
 	
 	
 	vec3 centAcc = centAccel(nextPosOnCurve, cartLoc, prevPos);
-	float k = curvature(nextPos, cartLoc, prevPos);
+	float k = curvature(nextPosOnCurve, cartLoc, prevPos);
 	float r = 1.0f / k;
 
+	//vec3 N = normal(centAcc, gravity);
 	vec3 N = (((v*v)/r) * centAcc) + gravity;
-	
 	N = N / getLength(N);
+	
 	vec3 tempT = tangentTemp(nextPosOnCurve, prevPos);
 
 
@@ -1445,6 +1457,12 @@ void animate(vec3 cartLoc, int &i, vector<vec3> points, float ds)
 	vec3 T = tangent(B, N);
 	
 	
+	/*
+	cout << "R:" << r << endl;
+	cout << "Binormal Animate";
+	printVec(B);
+	cout << "At index i: " << i << endl;
+	*/
 	mat4 modelTrans = translate(mat4(1.0f), nextPos);
 	
 	
@@ -1462,7 +1480,7 @@ void animate(vec3 cartLoc, int &i, vector<vec3> points, float ds)
 	wheelTemp = nextPos - Btemp;
 	mat4 wheelLTrans = translate(mat4(1.0f), wheelTemp);
 	
-	M = translate(mat4(1.0f), vec3(0.0f,1.0f,0.0f))* modelTrans * frenetFrame * scale(mat4(1.0f), vec3(1.3f, 1.3f,1.3f));
+	M = translate(mat4(1.0f), vec3(0.0f,1.0f,0.0f)) * modelTrans * frenetFrame;// * scale(mat4(1.0f), vec3(1.3f, 1.3f,1.3f));
 	MXYZ = modelTrans * frenetFrame;
 	freeFrame = frenetFrame;
 	
@@ -1530,7 +1548,7 @@ vec3 archLength(vec3 Bt, int &io, vector<vec3> points, float Ds)
 				
 				currLine = points[wrap(i+1)] - points[wrap(i)];
 				i++;
-				io = wrap(i);
+				io = wrap(i);// wrap(i);
 			}
 			
 		
@@ -1546,6 +1564,7 @@ vector<vec3> subdivision(vector<vec3> points, vector<unsigned int>* indices, vec
 	vec3 midPoint;
 	indices->clear();
 	normals->clear();
+	
 	int nextEl;
 	/* Splitting*/
 	for(int i = 0; i < points.size(); i++)
@@ -1593,28 +1612,40 @@ vector<vec3> subdivision(vector<vec3> points, vector<unsigned int>* indices, vec
 	return averagedPoints;
 }
 
-vec3 trackAnimation(vec3 cartLoc, int &i, vector<vec3> points, float ds)
+vec3 trackAnimation(vec3 cartLoc, int i, vector<vec3> points, float v)
 {
-	//vec3 nextPos= posOnCurve(cartLoc, i, points, ds);
+	
+	vec3 nextPos = posOnCurve(cartLoc, i, points, v);
+
 	vec3 prevPos = points[wrap(i-1)];
 	vec3 nextPosOnCurve = points[wrap(i+1)];
-	
+//	vec3 nextPos = nextPosOnCurve;
 	
 	vec3 centAcc = centAccel(nextPosOnCurve, cartLoc, prevPos);
 	float k = curvature(nextPosOnCurve, cartLoc, prevPos);
+	float r = 1.0f/k;
 
 	
-	vec3 N = (((v*v)/(1.0f/k)) * centAcc) + gravity;
-	
+	vec3 N = (((v*v)/r) * centAcc) + gravity;
 	N = N / getLength(N);
+	
+	//vec3 N = normal(centAcc, gravity);
+	
 	vec3 tempT = tangentTemp(nextPosOnCurve, prevPos);
 
 
 	vec3 B = binormal(N, tempT);
 	
-	
+	//cout << v << endl;
+	/*
+	cout << "R:" << r << endl;
+	cout << "Binormal Track";
+	printVec(B);
+	cout << "At index i: " << i << endl;
+	*/
 	//vec3 T = tangent(B, N);
 	
+
 	return B;
 }
 /* find the binormal at each point and add it to the current track for one rail and subtract it from the current track for the other rail*/
@@ -1626,29 +1657,35 @@ void createTrack (vector<vec3> points)
 	vec3 binormal;
 	vec3 cartLoc;
 	float ds;
-	for(int i = 0; i < points.size(); i++)
+	float v;
+	//cout << "SIZE " << points.size() << endl;
+	for(int j = 0; j < points.size(); j++)
 	{
+		//cout << " I: "<< j << endl;
+		v = currStateV(j);
 		//v = velocity(points[i].y);
+	
 		//ds = v*dt;
-		//cartLoc = points[i];
-		//binormal = trackAnimation(cartLoc, i, points, ds);
+		//cartLoc = points[i];	
 		
-		vec3 binormal = binormalAtCurrPoint(points[wrap(i+1)], points[wrap(i)], points[wrap(i-1)]);
+		binormal = trackAnimation(points[j], j, points, v);
 		
-		negRail.push_back((points[i] + binormal));
-		posRail.push_back((points[i] - binormal));
+		//binormal = binormalAtCurrPoint(points[wrap(j+1)], points[wrap(j)], points[wrap(j-1)], v);
 		
-		negIndices.push_back(i);
-		posIndices.push_back(i);
+		negRail.push_back((points[j] - binormal));
+		posRail.push_back((points[j] + binormal));
+		
+		negIndices.push_back(j);
+		posIndices.push_back(j);
 		
 		posNorm.push_back(vec3(0.5f, 0.5f, 0.0f));
 		negNorm.push_back(vec3(0.5f, 0.5f, 0.0f));
 		
-		nextEl = i + 1;
-		if(nextEl != points.size())
+		nextEl = j + 1;
+		if(nextEl < points.size())
 		{
-			negIndices.push_back(i+1);
-			posIndices.push_back(i+1);
+			negIndices.push_back(j+1);
+			posIndices.push_back(j+1);
 		}
 		else
 		{
@@ -1659,41 +1696,7 @@ void createTrack (vector<vec3> points)
 	}
 	
 }
-/*might not need*/
-void createWheel(vector<vec3> points)
-{
-	int nextEl;
-	for(int i = 0; i < points.size(); i++)
-	{
-		vec3 binormal = binormalAtCurrPoint(points[wrap(i+1)], points[wrap(i)], points[wrap(i-1)]);
-		
-		wheel.push_back((points[i] - binormal));
-		
-		
-		wheelInd.push_back(i);
-		//posIndices.push_back(i);
-		
-		wheelNorm.push_back(vec3(1.0f, 1.0f, 1.0f));
-		//posNorm.push_back(vec3(1.0f, 1.0f, 1.0f));
-		//negNorm.push_back(vec3(1.0f, 1.0f, 1.0f));
-		
-		nextEl = i + 1;
-		if(nextEl != points.size())
-		{
-			wheelInd.push_back(i+1);
-			//negIndices.push_back(i+1);
-			//posIndices.push_back(i+1);
-		}
-		else
-		{
-			wheelInd.push_back(0);
-		//	negIndices.push_back(0);
-			//posIndices.push_back(0);
-		}
-		
-	}
-	
-}
+
 // --------------------------------------------------------------------------
 // OpenGL utility functions
 

@@ -53,7 +53,7 @@ void generateWheel(vector<vec3>* vertices, vector<vec3>* normals,
 vec3 archLength(vec3 Bt, int& i, vector<vec3> points, float Ds);
 vec3 posOnCurve(vec3 Bt, int &i, vector<vec3> points, float ds);
 vec3 tangentTemp(vec3 nextPos, vec3 currPos);
-vec3 normal(vec3 cA, vec3 gravity);
+vec3 normal(vec3 centDirection, vec3 gravity, float v, float r);
 vec3 binormal(vec3 normal, vec3 tangent);
 mat4 freFrame(vec3 N, vec3 B, vec3 T);
 vec3 binormalAtCurrPoint(vec3 nextPos, vec3 currPos, vec3 prevPos, float v);
@@ -81,7 +81,7 @@ float low;
 bool lifting = true;
 bool gravityFree = false;
 bool decel = false;
-bool firstPerson = false;
+
 
 int startPoint;
 int startDec ;
@@ -104,6 +104,7 @@ GLuint vaoPos;
 GLuint vaoNeg;
 GLuint vaoWheel;
 GLuint vaoGround;
+GLuint vaoTrackCon;
 
 VertexBuffers vbo;
 VertexBuffers vboLine;//vertex buffer object for the line
@@ -111,11 +112,12 @@ VertexBuffers vboNeg;
 VertexBuffers vboPos;
 VertexBuffers vboWheel;
 VertexBuffers vboGround;
+VertexBuffers vboTrackCon;
 
 //Geometry information
 vector<vec3> points, normals, linePoints, lineNormal, XYZPoints, XYZNormals, wheel, wheelNorm, ground, groundNorm;
-vector<vec3> negRail, posRail, posNorm, negNorm; 
-vector<unsigned int> indices, lineIndices, XYZIndices, negIndices, posIndices, wheelInd, groundInd;
+vector<vec3> negRail, posRail, posNorm, negNorm, trackConnect, trackConnectNorm; 
+vector<unsigned int> indices, lineIndices, XYZIndices, negIndices, posIndices, wheelInd, groundInd, trackConnectInd;
 
 
 VertexBuffers vboPillar, vboPillarO;
@@ -158,10 +160,7 @@ void keyCallback(GLFWwindow* window, int key, int scancode, int action, int mods
     {
 		play = !play;
 	}
-	if(key == GLFW_KEY_F && action == GLFW_PRESS)
-	{
-		firstPerson = !firstPerson;
-	}
+
 }
 
 void mouseButtonCallback(GLFWwindow* window, int button, int action, int mods)
@@ -338,7 +337,7 @@ bool loadUniforms(GLuint program, mat4 perspective, mat4 modelview)
 	return !CheckGLErrors("loadUniforms");
 }
 
-//Draws buffers to screen
+/* used for rendering the cart */
 void render()
 {
 	glBindVertexArray(vao);		//Use the LINES vertex array
@@ -357,7 +356,7 @@ void render()
 	glUseProgram(0);
 	glBindVertexArray(0);
 }
-
+/*renders the pillars*/
 void renderPillar(GLuint vao, VertexBuffers vbo, vector<vec3> points, vector<vec3> normal, vector<unsigned int> indices)
 {
 	glBindVertexArray(vao);		//Use the LINES vertex array
@@ -376,7 +375,7 @@ void renderPillar(GLuint vao, VertexBuffers vbo, vector<vec3> points, vector<vec
 	glUseProgram(0);
 	glBindVertexArray(0);
 }
-
+/*renders the ground*/
 void renderGround(GLuint vao, VertexBuffers vbo, vector<vec3> points, vector<vec3> normal, vector<unsigned int> indices)
 {
 	glBindVertexArray(vao);		//Use the LINES vertex array
@@ -396,50 +395,8 @@ void renderGround(GLuint vao, VertexBuffers vbo, vector<vec3> points, vector<vec
 	glBindVertexArray(0);
 }
 
-void renderWheel(GLuint vao, VertexBuffers vbo, vector<vec3> points, vector<vec3> normal, vector<unsigned int> indices)
-{
-	glBindVertexArray(vao);		//Use the LINES vertex array
-	glUseProgram(program);
-
-	loadBuffer(vbo, points, normals, indices);
-
-	glDrawElements(
-			GL_TRIANGLES,		//What shape we're drawing	- GL_TRIANGLES, GL_LINES, GL_POINTS, GL_QUADS, GL_TRIANGLE_STRIP
-			indices.size(),		//How many indices
-			GL_UNSIGNED_INT,	//Type
-			(void*)0			//Offset
-			);
-
-	CheckGLErrors("render");
-	glUseProgram(0);
-	glBindVertexArray(0);
-}
-
-
-void renderLine()
-{
-	
-	glBindVertexArray(vaoLine);
-	glUseProgram(program);
-	
-	
-	loadBuffer(vboLine, linePoints, lineNormal, lineIndices);
-	
-
-	glDrawElements(
-			GL_LINE_LOOP,
-			lineIndices.size(),
-			GL_UNSIGNED_INT,
-			(void*)0
-			);
-	
-	
-	
-	CheckGLErrors("renderLine");
-	glUseProgram(0);
-	glBindVertexArray(0);
-}
-void renderLineTest(GLuint vao, VertexBuffers vbo, vector<vec3> points, vector<vec3> normal, vector<unsigned int> indices)
+/*renders the track*/
+void renderLine(GLuint vao, VertexBuffers vbo, vector<vec3> points, vector<vec3> normal, vector<unsigned int> indices)
 {
 	glBindVertexArray(vao);
 	glUseProgram(program);
@@ -449,7 +406,7 @@ void renderLineTest(GLuint vao, VertexBuffers vbo, vector<vec3> points, vector<v
 	
 
 	glDrawElements(
-			GL_LINE_LOOP,
+			GL_LINES,
 			indices.size(),
 			GL_UNSIGNED_INT,
 			(void*)0
@@ -485,6 +442,7 @@ void renderXYZ()
 	glBindVertexArray(0);
 	
 }
+/* generates the wheels*/
 void generateWheel(vector<vec3>* vertices, vector<vec3>* normals, 
 					vector<unsigned int>* indices, float width)
 {
@@ -511,21 +469,11 @@ void generateWheel(vector<vec3>* vertices, vector<vec3>* normals,
 	indices->push_back(0);
 						
 }
+/*generates the ground*/
 void generateSquare(vector<vec3>* vertices, vector<vec3>* normals, 
 					vector<unsigned int>* indices, float width)
 {
-	/*
-	vertices->push_back(vec3(-width*0.5f, -width*0.75f, 0.f));
-	vertices->push_back(vec3(width*0.5f, -width*0.75f, 0.f));
-	vertices->push_back(vec3(width*0.5f, width*0.75f, 0.f));
-	vertices->push_back(vec3(-width*0.5f, width*0.75f, 0.f));
-*/
-/*
-	vertices->push_back(vec3(-1.0f, -1.0f, 0.f));
-	vertices->push_back(vec3(1.0f, -1.0f, 0.f));
-	vertices->push_back(vec3(1.0f, 1.0f, 0.f));
-	vertices->push_back(vec3(-1.0f, 1.0f, 0.f));
-*/
+
 
 	vertices->push_back(vec3(-3.0f, -1.0f, -3.0f));
 	vertices->push_back(vec3(3.0f, -1.0f, -3.0f));
@@ -546,6 +494,7 @@ void generateSquare(vector<vec3>* vertices, vector<vec3>* normals,
 	indices->push_back(3);
 	indices->push_back(0);
 }
+/*generates the pillar to "hold the track up"*/
 void generatePillar(vector<vec3>* vertices, vector<vec3>* normals,
 			vector<unsigned int>* indices, vec3 highPoint, vec3 lowPoint)
 {
@@ -639,6 +588,7 @@ void generatePillar(vector<vec3>* vertices, vector<vec3>* normals,
 	
 	
 }
+/*generates the cart*/
 void generateCube(vector<vec3>* vertices, vector<vec3>* normals, 
 					vector<unsigned int>* indices, float width)
 {
@@ -652,13 +602,6 @@ vertices->push_back(vec3(-1.0f, 1.0f, -1.f)); //5
 vertices->push_back(vec3(1.0f, 1.0f, -1.f)); //6
 vertices->push_back(vec3(1.0f, -1.0f, -1.f)); //7
 
-
-
-/* points for generating the pyramid*/
-//vertices->push_back(vec3(0.0f, 0.0f, 5.f)); //8 front pyramid
-//vertices->push_back(vec3(0.0f, -3.5f, 0.0f)); //8 bottom pyramid
-//vertices->push_back(vec3(3.5f, 0.0f, 0.0f)); //8 left pyramid
-//vertices->push_back(vec3(-3.5f, 0.0f, 0.0f)); //8
 
 
 /* front of cube*/
@@ -715,78 +658,7 @@ indices->push_back(1);
 indices->push_back(4);
 indices->push_back(7);
 
-/* Pyramid*/
-/* on the front
-indices->push_back(0);
-indices->push_back(1);
-indices->push_back(8);
 
-indices->push_back(1);
-indices->push_back(2);
-indices->push_back(8);
-
-indices->push_back(2);
-indices->push_back(3);
-indices->push_back(8);
-
-indices->push_back(0);
-indices->push_back(3);
-indices->push_back(8);
-*/
-/* bottom pointing pyramid*/
-/*
-indices->push_back(1);
-indices->push_back(7);
-indices->push_back(8);
-
-indices->push_back(1);
-indices->push_back(2);
-indices->push_back(8);
-
-indices->push_back(2);
-indices->push_back(4);
-indices->push_back(8);
-
-indices->push_back(4);
-indices->push_back(7);
-indices->push_back(8);
-*/
-/*left point pyramid*/
-/*
-indices->push_back(0);
-indices->push_back(1);
-indices->push_back(8);
-
-indices->push_back(0);
-indices->push_back(6);
-indices->push_back(8);
-
-indices->push_back(6);
-indices->push_back(7);
-indices->push_back(8);
-
-indices->push_back(1);
-indices->push_back(7);
-indices->push_back(8);
-*/
-/*right point pyramid*/
-/*
-indices->push_back(2);
-indices->push_back(3);
-indices->push_back(8);
-
-indices->push_back(2);
-indices->push_back(4);
-indices->push_back(8);
-
-indices->push_back(4);
-indices->push_back(5);
-indices->push_back(8);
-
-indices->push_back(3);
-indices->push_back(5);
-indices->push_back(8);
-*/
 
 /*colors of each point*/
 
@@ -800,12 +672,13 @@ normals->push_back(vec3(0.7f, 0.0f, 0.f));
 normals->push_back(vec3(0.5f, 0.0f, 0.f));
 normals->push_back(vec3(0.3f, 0.0f, 0.f));
 
-//normals->push_back(vec3(1.f, 1.f, 1.f));
+
 
 
 
 	
 }
+/*generates the XYZ coordframe of the cart*/
 void generateSquareXYZCoords(vector<vec3>* vertices, vector<vec3>* normals, 
 					vector<unsigned int>* indices)
 {
@@ -835,50 +708,26 @@ void generateLine(vector<vec3>* vertices, vector<vec3>* normals,
 					vector<unsigned int>* indices)
 {
 	
-	/* Main Loop */
-	/*
-	vertices->push_back(vec3(0, 0, 0)); //vert 0
-	vertices->push_back(vec3(0, 30, -40)); //vert 1
-	vertices->push_back(vec3(-10, 50, -40)); //vert 2
-	vertices->push_back(vec3(-30, 0, -40)); //vert 3
-	vertices->push_back(vec3(-30, 0, 10)); //vert 4
-	vertices->push_back(vec3(0, 0, 10)); //vert 5
-	*/
-	
 	for(int i = 0; i < filePoints.size()-1; i++)
 	{
 		vertices->push_back(filePoints[i]);
 	}
-	
-	/*
-	vertices->push_back(vec3(0, 0, 0)); //vert 0
-	vertices->push_back(vec3(0, 30, -40)); //vert 1
-	vertices->push_back(vec3(-20, 30, -40)); //vert 2
-	vertices->push_back(vec3(-30, 0, -40)); //vert 3
-	vertices->push_back(vec3(-30, 0, 10)); //vert 4
-	vertices->push_back(vec3(0, 0, 10)); //vert 5
-	*/
 
-	
+	normals->push_back(vec3(0.f, 1.f, 0.f));
+	normals->push_back(vec3(1.f, 0.f, 0.f));
 	normals->push_back(vec3(0.f, 1.f, 0.f));
 	normals->push_back(vec3(1.f, 0.f, 0.f));
 	
-	
-	normals->push_back(vec3(0.f, 1.f, 0.f));
-	normals->push_back(vec3(1.f, 0.f, 0.f));
-	
-	
+	//line 1
 	indices->push_back(0);
 	indices->push_back(1);
-	
-	
+	//line 2
 	indices->push_back(1);
 	indices->push_back(2);
-	
+	//line 3
 	indices->push_back(2);
 	indices->push_back(3);
-	
-	
+	//line 4
 	indices->push_back(3);
 	indices->push_back(0);
 	
@@ -943,6 +792,9 @@ void deleteStuff()
 	
 	glDeleteVertexArrays(1,&vaoPillarO);
 	glDeleteBuffers(VertexBuffers::COUNT, vboPillarO.id);
+	
+	glDeleteVertexArrays(1,&vaoTrackCon);
+	glDeleteBuffers(VertexBuffers::COUNT, vboTrackCon.id);
 	
 	glDeleteProgram(program);
 }
@@ -1023,16 +875,19 @@ float decelPoint(vector<vec3>points, float low)
 int zeroHeight(vector<vec3> points, float low)
 {
 	float nextH;
-	
+	int startPoint = 0;
 	float h; 
 	for(int i = 0; i < points.size(); i++)
 	{
 		h = points[i].y;
 		nextH = points[wrap(i+1)].y;//wrap(i+1, points).y;
 		if(h < nextH && h == low)
-			return i;
-		
+		{
+			startPoint = i;
+			break;
+		}
 	}
+	return startPoint;
 }
 
 /*get the distance from the deceleration point to the start point*/
@@ -1046,12 +901,14 @@ float distanceDecToStart(vector<vec3> points, int startIndex, int decIndex)
 	
 	return totalDistance;
 }
+/*calculates the velocity with the law of conservation of energy*/
 float velocity(float h)
 {
 	float v = sqrt(2.0f * -1.0f * gravity.y * (H-h));
 	
 	return v;
 }
+/* reads the track points from a file*/
 void readFile()
 {
 	ifstream myFile;
@@ -1079,6 +936,7 @@ void readFile()
 	myFile.close();
 	
 }
+/* determines what state the cart is in and returns the required velocity*/
 float currStateV (int i, float h)
 {
 		if(gravityFree)
@@ -1184,6 +1042,9 @@ int main(int argc, char *argv[])
 	initVAO(vaoPillarO, vboPillarO);
 	initVAO(vaoPillar, vboPillar);
 	
+	glGenVertexArrays(1, &vaoTrackCon);
+	glGenBuffers(VertexBuffers::COUNT, vboTrackCon.id);
+	initVAO(vaoTrackCon, vboTrackCon);
 	
 	generateWheel(&wheel, &wheelNorm, &wheelInd, 0.5f);
 	generateCube(&points, &normals, &indices, 0.5f);
@@ -1197,15 +1058,14 @@ int main(int argc, char *argv[])
 	generateSquareXYZCoords(&XYZPoints, &XYZNormals, &XYZIndices);
 	for(int i = 0; i < 10; i++)
 	{
-		
 		linePoints = subdivision(linePoints, &lineIndices, &lineNormal);
-		
 	}
 	
-	for(int i = 0; i < 4; i++)
+	for(int i = 0; i < 10; i++)
 	{
 		wheel = subdivision(wheel, &wheelInd, &wheelNorm);
 	}
+	
 	H = highestPoint(linePoints);
 	low = lowestPoint(linePoints);
 	generatePillar(&pillar, &pillarNorm, &pillarInd, linePoints[highestPointIndex], linePoints[lowestPointIndex]);
@@ -1216,7 +1076,7 @@ int main(int argc, char *argv[])
 	startDec = decelPoint(linePoints, low);
 	decDist = distanceDecToStart(linePoints, startPoint, startDec);
 	
-	//cout << decDist << endl;
+	
 
 	
 	
@@ -1230,56 +1090,42 @@ int main(int argc, char *argv[])
 
 	i = startPoint;
 	createTrack(linePoints); //creates the positive and negative rails
-	v= 0.1f;
+	v= 1.0f;
 	M = translate(mat4(1.0f), linePoints[i]);
 	animate(linePoints[i], i, linePoints, ds, v);
 
 	
 	MXYZ = translate(mat4(1.0f), linePoints[i]);
 	
-	//cout << "BEFORE MAIN LOOP" << endl;
+
     // run an event-triggered main loop
     while (!glfwWindowShouldClose(window))
     {
 		glClearColor(0.2, 0.2, 0.7, 1.0);
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);		//Clear color and depth buffers (Haven't covered yet)
+		
 		h = linePoints[i].y;
 		v = currStateV(i, h);
 	
-		V = cam.getMatrix();
 		
 		if(play)
 			{	
 				ds = v*dt;
 				animate(linePoints[i], i, linePoints, ds, v);		
 			}
-		if(firstPerson)
-		{
-		//	frenetFrame[2][0] = T.x; 
-		//frenetFrame[2][1] = T.y; 
-		//frenetFrame[2][2]
-			//cam.dir = vec3(freeFrame[2][0], freeFrame[2][1], freeFrame[2][2]);
-			 
-			//cam.pos = linePoints[i];
-			//V = freeFrame;
-		}
+		
 	
+		V = cam.getMatrix();
 		
-		
-        // draw the square for now
-        if(!firstPerson)
-        {
-			//cam.pos = vec3(0, 20, 50);
-			//V = cam.getMatrix();
-			loadUniforms(program, winRatio*perspectiveMatrix*V, M);
-			render();
-		}
+      
+		loadUniforms(program, winRatio*perspectiveMatrix*V, M);
+		render();
 		
         loadUniforms(program, winRatio*perspectiveMatrix*V, mWheelR);
-		renderLineTest(vaoWheel, vboWheel, wheel, wheelNorm, wheelInd);
+		renderLine(vaoWheel, vboWheel, wheel, wheelNorm, wheelInd);
       
 		loadUniforms(program, winRatio*perspectiveMatrix*V, mWheelL);
-		renderLineTest(vaoWheel, vboWheel, wheel, wheelNorm, wheelInd);
+		renderLine(vaoWheel, vboWheel, wheel, wheelNorm, wheelInd);
 		
 		loadUniforms(program, winRatio*perspectiveMatrix*V, scale(mat4(1.0f), vec3(25.0f, 3.0f, 30.0f)));
 		renderGround(vaoGround, vboGround, ground, groundNorm, groundInd);
@@ -1290,26 +1136,18 @@ int main(int argc, char *argv[])
 		loadUniforms(program, winRatio*perspectiveMatrix*V, mat4(1.0f));
 		renderPillar(vaoPillarO, vboPillarO, pillarO, pillarONorm, pillarOInd);
 	
-		//Draw the line
-		//loadUniforms(program, winRatio*perspectiveMatrix*V, mat4(1.0f));
-		
-       //renderLine();
-		
 		
 		loadUniforms(program, winRatio*perspectiveMatrix*V, mat4(1.0f));
-		
-		renderLineTest(vaoNeg, vboNeg, negRail, negNorm, negIndices); //need to make there own normals and indices probably
+		renderLine(vaoNeg, vboNeg, negRail, negNorm, negIndices); 
 		
 		
 		
 		loadUniforms(program, winRatio*perspectiveMatrix*V, mat4(1.0f));
+		renderLine(vaoPos, vboPos, posRail, posNorm, posIndices);
 		
-		renderLineTest(vaoPos, vboPos, posRail, posNorm, posIndices);
-		
-		
-		//loadUniforms(program, winRatio*perspectiveMatrix*V, MXYZ);
-		//renderXYZ(); //XYZ Framework of the Cube;
-		
+		loadUniforms(program, winRatio*perspectiveMatrix*V, mat4(1.0f));
+		renderLine(vaoTrackCon, vboTrackCon, trackConnect, trackConnectNorm, trackConnectInd);
+	
         // scene is rendered to the back buffer, so swap to front for display
         glfwSwapInterval(1);
         glfwSwapBuffers(window);
@@ -1328,7 +1166,7 @@ int main(int argc, char *argv[])
 }
 
 
-
+/* forces the i to be within the bounds of the main track*/
 int wrap(int i)
 {
 	int s = i;
@@ -1346,19 +1184,19 @@ int wrap(int i)
  * Returns the point at which the object should be at on the curve based on the passed in Ds
  * */
 
-
+/* returns the next position the cart should be on the curve*/
 vec3 posOnCurve(vec3 Bt, int &i, vector<vec3> points, float ds)
 {
 	return archLength(Bt, i, points, ds);
 }
-
+/*temporary tangent used to calculate the normal*/
 vec3 tangentTemp(vec3 nextPos, vec3 prevPos)
 {
 	vec3 T = nextPos - prevPos;
 	T = T / getLength(T);
 	return T;
 }
-
+/*Tangent of the frenet frame from, the binormal B, and normal N*/
 vec3 tangent(vec3 B, vec3 N)
 {
 	vec3 T = cross(N,B);
@@ -1366,45 +1204,40 @@ vec3 tangent(vec3 B, vec3 N)
 	return T;
 	
 }
-
-vec3 normal(vec3 cA, vec3 gravity)
+/* The normal of the frenet Frame given the centripetal acceleration direction centDirection, gravity, velocity, and curvature r (or 1/k) */
+vec3 normal(vec3 centDirection, vec3 gravity, float v, float r)
 {
-	vec3 N = cA - gravity;
+	vec3 N = (((v*v)/r) * centDirection) + gravity;
 	N = N / getLength(N);
 	return N;
 }
-/*used for figuring out centripetal acceleration */
-vec3 N (vec3 nextPos, vec3 currPos, vec3 prevPos)
-{
-	vec3 n = (nextPos - (2.0f * currPos) + prevPos);
-	
-	return n;
-}
+/* used for figuring out the curvature of the curve in order to determine how much the cart tilts*/
 float curvature (vec3 nextPos, vec3 currPos, vec3 prevPos)
 {
 	vec3 nVec = (nextPos - (2.0f * currPos) + prevPos);
-	//nVec = nVec / getLength(nVec);
 	float x = 0.5f * getLength(nVec);
 	float c = 0.5f * getLength((nextPos - prevPos));
 
 	float k = 1.0f / ((x*x)+(c*c));
-	//float k = (2.0f * x) / ((x*x)+(c*c));
+
 
 	return k;
 }
+
 /*direction of the centripetal force*/
-vec3 centAccel (vec3 nextPos, vec3 currPos, vec3 prevPos)
+vec3 centDir (vec3 nextPos, vec3 currPos, vec3 prevPos)
 {
 	vec3 nVec = (nextPos - (2.0f * currPos) + prevPos);
 	nVec = nVec / getLength(nVec);
 	return nVec;
 }
-
+/*gets the length of a vector*/
 float getLength(vec3 v)
 {
 	return sqrt((v.x * v.x) + (v.y * v.y) + (v.z * v.z));
 }
 
+/* Calculate the binormal of the curve*/
 vec3 binormal(vec3 normal, vec3 tangent)
 {
 	vec3 B = cross(normal, tangent);
@@ -1412,27 +1245,9 @@ vec3 binormal(vec3 normal, vec3 tangent)
 	return B;
 	
 }
-vec3 binormalAtCurrPoint(vec3 nextPos, vec3 currPos, vec3 prevPos, float v)
-{
 
-	vec3 centAcc = centAccel(nextPos, currPos, prevPos);
-	float k = curvature(nextPos, currPos, prevPos);
-	vec3 T = tangentTemp(nextPos, prevPos);
-	
-	float r = 1.0f / k;
-	
-	vec3 N = normal(centAcc, gravity);
-	//vec3 N = (((v*v)/r) * centAcc) + gravity;
-	
-	//N = N / getLength(N);
-	
-	
-	vec3 B = binormal(N,T);
-	//B = B / getLength(B);
-	
-	return B;
-}
-/* for now move the square along the x axis*/
+
+/* Moves the cart along the track */
 void animate(vec3 cartLoc, int &i, vector<vec3> points, float ds, float v)
 {
 	
@@ -1441,13 +1256,12 @@ void animate(vec3 cartLoc, int &i, vector<vec3> points, float ds, float v)
 	vec3 prevPos = points[wrap(i-1)];
 	vec3 nextPosOnCurve = points[wrap(i+1)];
 	
-	vec3 centAcc = centAccel(nextPosOnCurve, cartLoc, prevPos);
+	vec3 centDirection = centDir(nextPosOnCurve, cartLoc, prevPos);
 	float k = curvature(nextPosOnCurve, cartLoc, prevPos);
 	float r = 1.0f / k;
 
-	//vec3 N = normal(centAcc, gravity);
-	vec3 N = (((v*v)/r) * centAcc) + gravity;
-	N = N / getLength(N);
+
+	vec3 N = normal(centDirection, gravity, v, r);
 	
 	vec3 tempT = tangentTemp(nextPosOnCurve, prevPos);
 
@@ -1457,13 +1271,6 @@ void animate(vec3 cartLoc, int &i, vector<vec3> points, float ds, float v)
 	
 	vec3 T = tangent(B, N);
 	
-	//cout << v << endl;
-/*
-	cout << "R:" << r << endl;
-	cout << "Binormal Animate";
-	printVec(B);
-	cout << "At index i: " << i << endl;
-	*/
 	mat4 modelTrans = translate(mat4(1.0f), nextPos);
 	
 	
@@ -1483,7 +1290,7 @@ void animate(vec3 cartLoc, int &i, vector<vec3> points, float ds, float v)
 	wheelTemp = cartLoc - Btemp;
 	mat4 wheelLTrans = translate(mat4(1.0f), wheelTemp);
 	
-	M = translate(mat4(1.0f), vec3(0.0f,1.0f,0.0f)) * modelTrans * frenetFrame * scale(mat4(1.0f), vec3(0.5f, 0.5f, 0.5f));
+	M = translate(mat4(1.0f), vec3(0.0f,1.0f,0.0f)) * modelTrans * frenetFrame * scale(mat4(1.0f), vec3(0.75f, 0.75f, 0.75f));
 	MXYZ = modelTrans * frenetFrame;
 	freeFrame = frenetFrame;
 	
@@ -1500,6 +1307,8 @@ void animate(vec3 cartLoc, int &i, vector<vec3> points, float ds, float v)
 							B.y,N.y,T.y,0.0
 							B.z,N.z,T.z,0.0
 							0.0,0.0,0.0,1.0);
+
+Sets up the frenet frame with the Normal N, binormal B, tangent T
 */
 mat4 freFrame(vec3 N, vec3 B, vec3 T)
 {
@@ -1522,6 +1331,8 @@ mat4 freFrame(vec3 N, vec3 B, vec3 T)
 	return frenetFrame;
 }
 /*-----------------------------------------------------------------------------------------------------------------*/
+
+/* Gives the next location along the curve witha  given starting location Bt, current location on the curve i, curve points points, and distance to travel ds */
 vec3 archLength(vec3 Bt, int &i, vector<vec3> points, float Ds)
 {
 	
@@ -1561,7 +1372,7 @@ vec3 archLength(vec3 Bt, int &i, vector<vec3> points, float Ds)
 		
 
 }
-
+/* B-Spline subdivision of control points to create a curve*/
 vector<vec3> subdivision(vector<vec3> points, vector<unsigned int>* indices, vector<vec3>* normals)
 {
 	vector<vec3> splitPoints;
@@ -1617,69 +1428,10 @@ vector<vec3> subdivision(vector<vec3> points, vector<unsigned int>* indices, vec
 	return averagedPoints;
 }
 /*
- * void animate(vec3 cartLoc, int &i, vector<vec3> points, float ds)
-{
-	
-	
-	vec3 nextPos = posOnCurve(cartLoc, i, points, ds);
-	vec3 prevPos = points[wrap(i-1)];
-	vec3 nextPosOnCurve = points[wrap(i+1)];
-	
-	vec3 centAcc = centAccel(nextPosOnCurve, cartLoc, prevPos);
-	float k = curvature(nextPosOnCurve, cartLoc, prevPos);
-	float r = 1.0f / k;
-
-	//vec3 N = normal(centAcc, gravity);
-	vec3 N = (((v*v)/r) * centAcc) + gravity;
-	N = N / getLength(N);
-	
-	vec3 tempT = tangentTemp(nextPosOnCurve, prevPos);
-
-
-	vec3 B = binormal(N, tempT);
-	
-	
-	vec3 T = tangent(B, N);
-	
-	
-	/*
-	cout << "R:" << r << endl;
-	cout << "Binormal Animate";
-	printVec(B);
-	cout << "At index i: " << i << endl;
-	
-	mat4 modelTrans = translate(mat4(1.0f), nextPos);
-	
-	
-	mat4 frenetFrame = freFrame(N, B, T);
-	
-	vec3 Btemp = B;
-
-	Btemp *= 0.5f;
-	vec3 wheelTemp = nextPos + Btemp;
-	
-	Btemp = B;
-	Btemp *= 2.5f;
-	mat4 wheelRTrans = translate(mat4(1.0f), wheelTemp);
-
-	wheelTemp = nextPos - Btemp;
-	mat4 wheelLTrans = translate(mat4(1.0f), wheelTemp);
-	
-	M = translate(mat4(1.0f), vec3(0.0f,1.0f,0.0f)) * modelTrans * frenetFrame;// * scale(mat4(1.0f), vec3(1.3f, 1.3f,1.3f));
-	MXYZ = modelTrans * frenetFrame;
-	freeFrame = frenetFrame;
-	
-	
-	mWheelL = wheelLTrans * frenetFrame;
-	mWheelR = wheelRTrans * frenetFrame;
-	
-
-}
- * 
- * */
+Orients the track to curve when the cart should curve 
+*/
 vec3 trackAnimation(vec3 cartLoc, int i, vector<vec3> points, float ds, float v)
 {
-	//int io = i;
 	
 	vec3 nextPos = posOnCurve(cartLoc, i, points, ds);
 	vec3 prevPos = points[wrap(i-1)];
@@ -1687,37 +1439,25 @@ vec3 trackAnimation(vec3 cartLoc, int i, vector<vec3> points, float ds, float v)
 	
 
 	
-	vec3 centAcc = centAccel(nextPosOnCurve, cartLoc, prevPos);
+	vec3 centDirection = centDir(nextPosOnCurve, cartLoc, prevPos);
 	float k = curvature(nextPosOnCurve, cartLoc, prevPos);
 	float r = 1.0f / k;
 
+	vec3 N = normal(centDirection, gravity, v, r);
 	
-
-	//centAcc = -centAcc;
-	
-	vec3 N = (((v*v)/r) * centAcc) + gravity;
-	N = N / getLength(N);
-	//vec3 N = normal(centAcc, gravity);
-	//vec3 N = normal(centAcc, gravity);
-	//N= -N;
 	vec3 tempT = tangentTemp(nextPosOnCurve, prevPos);
 
 
 	vec3 B = binormal(N, tempT);
 	
-	//cout << v << endl;
-	/*
-	cout << "R:" << r << endl;
-	cout << "Binormal Track";
-	printVec(B);
-	cout << "At index i: " << i << endl;
-	*/
-	//vec3 T = tangent(B, N);
 	
 
 	return B*1.5f;
 }
 /* find the binormal at each point and add it to the current track for one rail and subtract it from the current track for the other rail*/
+/*
+ Creates all the points for the track and stores it in 3 arrays
+  */
 void createTrack (vector<vec3> points)
 {
 	
@@ -1727,37 +1467,43 @@ void createTrack (vector<vec3> points)
 	vec3 cartLoc;
 	float ds;
 	float v;
-	//cout << "SIZE " << points.size() << endl;
 	for(int j = 0; j < points.size(); j++)
 	{
-		//cout << " I: "<< j << endl;
+	
 		v = currStateV(j, points[j].y);
-		//v = velocity(points[i].y);
-	//	cout << v << endl;
-		//ds = v*dt;
-		//cartLoc = points[i];	
+	
 		ds = v*dt;
 		binormal = trackAnimation(points[j], j, points, ds, v);
-		
-		//binormal = binormalAtCurrPoint(points[wrap(j+1)], points[wrap(j)], points[wrap(j-1)], v);
-		
+	
 		negRail.push_back((points[j] - binormal));
 		posRail.push_back((points[j] + binormal));
 		
+		
+		if(j%2 == 0)
+		{
+			trackConnect.push_back((points[j] - binormal));
+			trackConnect.push_back((points[j] + binormal));
+			trackConnectInd.push_back(j);
+			trackConnectInd.push_back(j+1);
+			trackConnectNorm.push_back(vec3(0.5f, 0.5f, 0.0f));
+			trackConnectNorm.push_back(vec3(0.5f, 0.5f, 0.0f));
+		}
 		negIndices.push_back(j);
 		posIndices.push_back(j);
 		
-		posNorm.push_back(vec3(0.5f, 0.5f, 0.0f));
-		negNorm.push_back(vec3(0.5f, 0.5f, 0.0f));
+		posNorm.push_back(vec3(0.8f, 0.4f, 0.0f));
+		negNorm.push_back(vec3(0.8f, 0.4f, 0.0f));
 		
 		nextEl = j + 1;
 		if(nextEl < points.size())
 		{
+			
 			negIndices.push_back(j+1);
 			posIndices.push_back(j+1);
 		}
 		else
 		{
+		
 			negIndices.push_back(0);
 			posIndices.push_back(0);
 		}

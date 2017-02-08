@@ -1080,7 +1080,7 @@ int main(int argc, char *argv[])
 
 	
 	
-	Camera cam = Camera(vec3(0, 0, -1), vec3(10, 20, 50));
+	Camera cam = Camera(vec3(0, 0, -1), vec3(-20, 20, 70));
 	activeCamera = &cam;
 	//float fovy, float aspect, float zNear, float zFar
 	mat4 perspectiveMatrix = perspective(radians(80.f), 1.f, 0.1f, 300.f);
